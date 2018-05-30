@@ -23,7 +23,7 @@ airspeed indicator after correction for instrument error and
 position error.
 """
 
-from math import asin, atan, sqrt
+from math import asin, atan2, sqrt
 from pyfme.models.constants import RHO_0, P_0, SOUND_VEL_0, GAMMA_AIR
 
 
@@ -78,7 +78,7 @@ def calculate_alpha_beta_TAS(u, v, w):
 
     TAS = sqrt(u ** 2 + v ** 2 + w ** 2)
 
-    alpha = atan(w / u)
+    alpha = atan2(w, u)
     beta = asin(v / TAS)
 
     return alpha, beta, TAS

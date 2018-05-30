@@ -46,6 +46,7 @@ class Position:
         self._geocentric_coordinates = np.asarray(geocentric, dtype=float)  # m
         # Earth coordinates (x_earth, y_earth, z_earth)
         self._earth_coordinates = np.asarray(earth, dtype=float)  # m
+        self._earth_coordinates_ref = None
 
     @abstractmethod
     def update(self, coords):
@@ -132,6 +133,16 @@ class EarthPosition(Position):
 
         # Update Earth coordinates with value
         self._earth_coordinates[:] = value
+
+    def perturbate(self, eps_vector, **kwargs):
+        assert self._earth_coordinates_ref is None, "Cancel perturbation on position before perturbating again"
+        self._earth_coordinates_ref = np.copy(self._earth_coordinates)
+        self.update(self._earth_coordinates + eps_vector)
+
+    def cancel_perturbation(self, **kwargs):
+        if self._earth_coordinates_ref is not None:
+            self.update(self._earth_coordinates_ref)
+            self._earth_coordinates_ref = None
 
     def __repr__(self):
         rv = (f"x_e: {self.x_earth:.2f} m, y_e: {self.y_earth:.2f} m, "

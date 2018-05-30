@@ -14,6 +14,7 @@ import numpy as np
 from .angular_velocity import BodyAngularVelocity
 from .acceleration import BodyAcceleration
 from .angular_acceleration import BodyAngularAcceleration
+from pyfme.utils.coordinates import wind2body
 
 
 class AircraftState:
@@ -35,6 +36,7 @@ class AircraftState:
         self.acceleration = acceleration
         self.angular_accel = angular_accel
 
+
     @property
     def value(self):
         """Only for testing purposes"""
@@ -53,3 +55,25 @@ class AircraftState:
             f"{self.angular_accel} \n"
         )
         return rv
+
+    def perturbate(self, eps_vector, keyword):
+        """
+        Perturbates the "keyword" part of the state (position, attitude, velocity, angular_vel) by eps_vec (size (3,)).
+        Each vector V becomes V + eps_vector, so eps is the change in each direction.
+        The perturbations can optionally be specified in the stability_axis. Note that it is common to linearize the
+        dynamics in stability axis
+        """
+        # Get the "keyword" part of the state
+        attr = getattr(self, keyword)
+
+        # Perturbate
+        attr.perturbate(eps_vector, attitude=self.attitude)
+
+    def cancel_perturbation(self):
+        """
+        Brings back to reference state.
+        """
+        for keyword in ['position', 'attitude', 'velocity', 'angular_vel', 'acceleration']:
+            getattr(self, keyword).cancel_perturbation(attitude=self.attitude)
+
+        return self

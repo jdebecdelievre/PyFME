@@ -74,11 +74,14 @@ CN_delta_aile - incremental yawing moment coefficient derivative with respect
                 deflection and the angle of attack via [2]
 """
 import numpy as np
+import pdb
 from scipy.interpolate import RectBivariateSpline
+from scipy.stats import linregress
 
 from pyfme.aircrafts.aircraft import Aircraft
 from pyfme.models.constants import slugft2_2_kgm2, lbs2kg
-from pyfme.utils.coordinates import wind2body
+from pyfme.utils.coordinates import wind2body, body2wind
+from copy import deepcopy as cp
 
 
 class Cessna172(Aircraft):
@@ -142,7 +145,7 @@ class Cessna172(Aircraft):
         self.CN_r_data = np.array([-0.028, -0.027, -0.027, -0.0275, -0.0293, -0.0325, -0.037, -0.043, -0.05484, -0.058, -0.0592, -0.06015])
         self.CN_delta_rud_data = (-1)*np.array([-0.211, -0.215, -0.218, -0.22, -0.224, -0.226, -0.228, -0.229, -0.23, -0.23, -0.23, -0.23])
         self.CN_delta_aile_data = np.array([[-0.004321, -0.002238, -0.0002783, 0.001645, 0.003699, 0.005861, 0.008099, 0.01038, 0.01397, 0.01483, 0.01512, 0.01539],
-                                            [-0.003318, -0.001718, -0.0002137, 0.001263, 0.00284, 0.0045, 0.006218, 0.00797, 0.01072, 0.01138, 0.01161, 0.01181],
+                                               [-0.003318, -0.001718, -0.0002137, 0.001263, 0.00284, 0.0045, 0.006218, 0.00797, 0.01072, 0.01138, 0.01161, 0.01181],
                                             [-0.002016, -0.001044, -0.000123, 0.0007675, 0.00173, 0.002735, 0.0038, 0.004844, 0.00652, 0.00692, 0.00706, 0.0072],
                                             [-0.00101, -0.000522, -0.0000649, 0.000384, 0.000863, 0.00137, 0.0019, 0.00242, 0.00326, 0.00346, 0.00353, 0.0036],
                                             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -353,4 +356,212 @@ class Cessna172(Aircraft):
         self.total_forces = Ft + Fg + Fa
         self.total_moments = np.array([l, m, n])
 
+        self.Fa_wind = Fa_wind
+
+        # return state.velocity._vel_body, state.angular_vel._vel_ang_body
         return self.total_forces, self.total_moments
+
+
+
+    def calculate_derivatives(self, state, environment, controls):
+        """
+        Calculate dimensional derivatives of the forces at the vicinity of the state.
+        The output consists in 2 dictionaries, one for force one for moment
+        key: type of variables derivatives are taken for
+        val : 3x3 np array with X,Y,Z and L,M,N as columns, and the variable we differentiate against in lines
+        (u,v,w ; phi,theta,psi ; p,q,r ; x,y,z)
+        """
+        names = {'velocity': ['u', 'v', 'w'],
+                 'angular_vel': ['p', 'q', 'r'],
+                 'acceleration': ['w_dot']}
+        Fnames = ['X', 'Y', 'Z']
+        Mnames = ['L', 'M', 'N']
+
+        eps = 1e-3
+        # F, M = self.calculate_forces_and_moments(state, environment, controls)
+
+        # Rotation for stability derivatives in stability axis
+        V = np.sqrt(state.velocity.u**2 + state.velocity.v**2 + state.velocity.w**2)
+        alpha = np.arctan2(state.velocity.w, state.velocity.u)
+        beta = np.arcsin(state.velocity.v / V)
+
+
+        derivatives = {}
+        for keyword in names.keys():
+            for i in range(len(names[keyword])):
+                eps_v0 = np.zeros(3)
+
+                # plus perturb
+                eps_v0[i] = eps/2
+                eps_vec = wind2body(eps_v0, alpha, beta)
+                state.perturbate(eps_vec, keyword)
+                forces_p, moments_p = self.calculate_forces_and_moments(state, environment, controls)
+                forces_p = body2wind(forces_p, alpha, beta)
+                moments_p = body2wind(moments_p, alpha, beta)
+                state.cancel_perturbation()
+
+                # minus perturb
+                eps_v0[i] = - eps/2
+                eps_vec = wind2body(eps_v0, alpha, beta)
+                state.perturbate(eps_vec, keyword)
+                forces_m, moments_m = self.calculate_forces_and_moments(state, environment, controls)
+                forces_m = body2wind(forces_m, alpha, beta)
+                moments_m = body2wind(moments_m, alpha, beta)
+                state.cancel_perturbation()
+
+                k = names[keyword][i]
+                for j in range(3):
+                    # print(Fnames[j] + k, forces[j])
+                    derivatives[Fnames[j] + k] = (forces_p[j] - forces_m[j]) / eps
+                    derivatives[Mnames[j] + k] = (moments_p[j] - moments_m[j]) / eps
+
+        return derivatives
+
+    def build_linear_system(self, state, environment, controls):
+        """
+        Building linear system as described in Etkin. For full linearized equations see page 113. The variables are
+        delta_u, w, q and delta_theta for the long. system,. and v,p,r and psi for the lateral one.
+        /!\ Important notice: Ixz is defined as done in Roskam
+        """
+        ## TODO : Verify definitions for Izx
+
+
+class SimplifiedCessna172(Cessna172):
+    def __init__(self):
+        super().__init__()
+        self.CL_0 = 0.148
+        self.CM_0 = 0.0075
+        self.CL_alpha = 5.440E+00
+        self.CL_q = np.mean(self.CL_q_data)
+        self.CL_delta_elev = np.sum(self.delta_elev_data*self.CL_delta_elev_data)/np.sum(self.delta_elev_data**2)
+
+        self.CM_alpha2, self.CM_alpha, self.CM_0 = np.polyfit(self.alpha_data, self.CM_data, 2)
+        self.CM_q = 2*np.mean(self.CM_q_data)
+        self.CM_delta_elev = np.sum(self.delta_elev_data*self.CM_delta_elev_data)/np.sum(self.delta_elev_data**2)
+
+
+        # pre-stall drag model
+        ICL_max = self.CL_data.argmax()
+        cl = self.CL_data[:ICL_max-2]
+        cd = self.CD_data[:ICL_max-2]
+        al = self.alpha_data[: ICL_max]
+        self.CD_K1, self.CD_0, r_value, p_value, std_err = linregress(cl ** 2, cd)
+        self.CL_MAX = self.CL_data[ICL_max]
+
+        self.CY_beta = np.mean(self.CY_beta_data)
+        self.CY_p = np.mean(self.CY_p_data)
+        self.CY_r = np.mean(self.CY_r_data)
+        self.CY_delta_rud = np.mean(self.CY_delta_rud_data)
+
+        # XXX: Tunned Cl_delta_rud
+        self.Cl_beta = 0.1*np.mean(self.Cl_beta_data)
+        self.Cl_p = np.mean(self.Cl_p_data)
+        self.Cl_r_cl = np.sum(self.CL_data*self.Cl_r_data)/np.sum(self.CL_data**2)
+        self.Cl_delta_rud = .075*np.mean(self.Cl_delta_rud_data)
+        self.Cl_delta_aile = np.sum(self.delta_aile_data*self.Cl_delta_aile_data)/np.sum(self.delta_aile_data**2)
+
+
+        # XXX: Tunned CN_delta_rud
+        self.CN_beta = np.mean(self.CN_beta_data)
+        self.CN_p_al = np.sum(self.alpha_data*self.CN_p_data)/np.sum(self.alpha_data**2)
+        self.CN_r_cl, self.CN_r_0, _, _,_ = linregress(self.CL_data**2,self.CN_r_data)
+        self.CN_delta_rud = 0.075*np.mean(self.CN_delta_rud_data)
+        x = np.reshape(self.CL_data, (1, 12)) * np.reshape(self.delta_aile_data, (9, 1))
+        self.CN_delta_aile_cl = np.sum(self.CN_delta_aile_data*x) / np.sum(x**2)
+
+        # simplistic thrust model
+        self.RPM_delta_t = 1800
+        self.RPM_idle = 1000
+        self.Ct_J2, self.Ct_J, self.Ct_0 = np.polyfit(self.J_data, self.Ct_data, 2)
+
+
+
+    def _calculate_aero_lon_forces_moments_coeffs(self, state):
+        """
+        Simplified dynamics for the Cessna 172: strictly linear dynamics.
+        Stability derivatives are considered constant, the value for small angles is kept.
+
+        Parameters
+        ----------
+        state
+
+        Returns
+        -------
+
+        """
+
+        delta_elev = np.rad2deg(self.controls['delta_elevator'])  # deg
+        alpha_DEG = np.rad2deg(self.alpha)  # deg
+        alpha_RAD = self.alpha # rad
+        c = self.chord  # m
+        V = self.TAS  # m/s
+        p, q, r = (state.angular_vel.p, state.angular_vel.q,
+                   state.angular_vel.r)  # rad/s
+
+        self.CL = (
+            self.CL_0 +
+            self.CL_alpha*alpha_RAD +
+            self.CL_delta_elev*delta_elev +
+            self.CL_q * q * c/(2*V)
+        )
+        # STALL
+        self.CL = self.CL if abs(self.CL) < self.CL_MAX else np.sign(self.CL)*self.CL_MAX
+
+        self.CD = self.CD_0 + self.CD_K1*self.CL**2
+
+        self.CM = (
+            self.CM_0 +
+            (self.CM_alpha2*alpha_DEG + self.CM_alpha)*alpha_DEG +
+            self.CM_delta_elev * delta_elev +
+            self.CM_q * q * c/(2*V)
+        )
+
+    def _calculate_aero_lat_forces_moments_coeffs(self, state):
+        delta_aile = np.rad2deg(self.controls['delta_aileron'])  # deg
+        delta_rud_RAD = self.controls['delta_rudder']  # rad
+        alpha_DEG = np.rad2deg(self.alpha)  # deg
+        b = self.span
+        V = self.TAS
+        p, q, r = state.angular_vel.p, state.angular_vel.q, state.angular_vel.r
+
+        self.CY = (
+            self.CY_beta * self.beta +
+            self.CY_delta_rud * delta_rud_RAD +
+            b/(2 * V) * (self.CY_p * p + self.CY_r * r)
+        )
+
+        self.Cl = (
+            self.Cl_beta * self.beta +
+            self.Cl_delta_aile * delta_aile +
+            self.Cl_delta_rud * delta_rud_RAD +
+            b/(2 * V) * (self.Cl_p * p + self.Cl_r_cl * self.CL * r)
+        )
+
+        self.CN = (
+            self.CN_beta * self.beta +
+            (self.CN_delta_aile_cl*self.CL*delta_aile) +
+            self.CN_delta_rud * delta_rud_RAD +
+            b/(2 * V) * (self.CN_p_al*alpha_DEG * p + (self.CN_r_cl*self.CL**2 + self.CN_r_0) * r)
+        )
+
+    def _calculate_thrust_forces_moments(self, environment):
+        delta_t = self.controls['delta_t']
+        rho = environment.rho
+        V = self.TAS
+        prop_rad = self.propeller_radius
+
+        # throttle controls the revolutions of the propeller linearly.
+        RPM = self.RPM_delta_t*delta_t + self.RPM_idle  # rpm
+        omega_RAD = (RPM * 2 * np.pi) / 60.0  # rad/s
+
+        # We calculate the relation between the thrust coefficient Ct and the
+        # advance ratio J using the program JavaProp
+        J = (np.pi * V) / (omega_RAD * prop_rad)  # non-dimensional
+        Ct = self.Ct_J2*J + self.Ct_J*J + self.Ct_0  # non-dimensional
+
+        T = (2/np.pi)**2 * rho * (omega_RAD * prop_rad)**2 * Ct  # N
+
+        # We will consider that the engine is aligned along the OX (body) axis
+        Ft = np.array([T, 0, 0])
+
+        return Ft

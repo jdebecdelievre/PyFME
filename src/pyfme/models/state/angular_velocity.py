@@ -32,6 +32,7 @@ class AngularVelocity:
         self._vel_ang_body = np.zeros(3)  # rad/s
         # EULER ANGLE RATES (theta_dot, phi_dot, psi_dot)
         self._euler_ang_rate = np.zeros(3)  # rad/s
+        self._vel_ang_body_ref = None
 
     @abstractmethod
     def update(self, coords, attitude):
@@ -87,6 +88,16 @@ class BodyAngularVelocity(AngularVelocity):
         # TODO: transform angular velocity in body axis to euler angles
         # rates
         self._euler_ang_rate = np.zeros(3)  # rad/s
+
+    def perturbate(self, eps_vector, **kwargs):
+        assert self._vel_ang_body_ref is None, "Cancel perturbation on velocity before perturbating again"
+        self._vel_ang_body_ref = np.copy(self._vel_ang_body)
+        self.update(self._vel_ang_body + eps_vector, kwargs['attitude'])
+
+    def cancel_perturbation(self, **kwargs):
+        if self._vel_ang_body_ref is not None:
+            self.update(self._vel_ang_body_ref, kwargs['attitude'])
+            self._vel_ang_body_ref = None
 
     def __repr__(self):
         return (f"P: {self.p:.2f} rad/s, "

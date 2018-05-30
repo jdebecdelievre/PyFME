@@ -448,3 +448,27 @@ def wind2body(wind_coords, alpha, beta):
     body_coords = Lbw.dot(wind_coords)
 
     return body_coords
+
+
+def body2stab(body_coords, alpha, beta):
+    return body2wind(body_coords, alpha, beta)
+
+def stab2body(body_coords, alpha, beta):
+    check_alpha_beta_range(alpha, beta)
+
+    # Transformation matrix from body to wind
+    Lwb = np.array([
+                    [cos(alpha) * cos(beta),
+                     sin(beta),
+                     sin(alpha) * cos(beta)],
+                    [- cos(alpha) * sin(beta),
+                     cos(beta),
+                     -sin(alpha) * sin(beta)],
+                    [-sin(alpha),
+                     0,
+                     cos(alpha)]
+                    ])
+
+    wind_coords = np.linalg.lstsq(Lwb, body_coords)[0]
+
+    return wind_coords

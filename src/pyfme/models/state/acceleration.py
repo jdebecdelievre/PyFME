@@ -36,6 +36,7 @@ class Acceleration:
         self._accel_body = np.zeros(3)  # m/s²
         # Local horizon (NED)
         self._accel_NED = np.zeros(3)  # m/s²
+        self._accel_body_ref = None
 
     @abstractmethod
     def update(self, coords, attitude):
@@ -91,6 +92,17 @@ class BodyAcceleration(Acceleration):
                                    attitude.theta,
                                    attitude.phi,
                                    attitude.psi)
+
+    def perturbate(self, eps_vector, **kwargs):
+        assert self._accel_body_ref is None, "Cancel perturbation on velocity before perturbating again"
+        self._accel_body_ref = np.copy(self._accel_body)
+        self.update(self._accel_body + eps_vector, kwargs['attitude'])
+
+    def cancel_perturbation(self, **kwargs):
+        if self._accel_body_ref is not None:
+            self.update(self._accel_body_ref, kwargs['attitude'])
+            self._accel_body_ref = None
+
 
     def __repr__(self):
         rv = (f"u_dot: {self.u_dot:.2f} m/s², v_dot: {self.v_dot:.2f} m/s², "

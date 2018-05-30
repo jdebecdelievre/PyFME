@@ -37,6 +37,7 @@ class Attitude:
         self._euler_angles = np.zeros(3)  # rad
         # Quaternions (q0, q1, q2, q3)
         self._quaternions = np.zeros(4)
+        self._euler_angles_ref = None
 
     @abstractmethod
     def update(self, value):
@@ -95,6 +96,16 @@ class EulerAttitude(Attitude):
         self._euler_angles[:] = value
         # TODO: transform quaternions to Euler angles
         self._quaternions = np.zeros(4)
+
+    def perturbate(self, eps_vector, **kwargs):
+        assert self._euler_angles_ref is None, "Cancel perturbation on velocity before perturbating again"
+        self._euler_angles_ref = np.copy(self._euler_angles)
+        self.update(self._euler_angles + eps_vector)
+
+    def cancel_perturbation(self, **kwargs):
+        if self._euler_angles_ref is not None:
+            self.update(self._euler_angles_ref)
+            self._euler_angles_ref = None
 
     def __repr__(self):
         rv = (f"theta: {self.theta:.3f} rad, phi: {self.phi:.3f} rad, "

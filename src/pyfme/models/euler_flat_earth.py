@@ -21,6 +21,7 @@ from pyfme.models.state import (
     AircraftState, EarthPosition, EulerAttitude, BodyVelocity,
     BodyAngularVelocity, BodyAcceleration, BodyAngularAcceleration
 )
+from pyfme.utils.coordinates import body2wind
 
 
 class EulerFlatEarth(AircraftDynamicSystem):
@@ -82,8 +83,8 @@ class EulerFlatEarth(AircraftDynamicSystem):
                             full_state.position.lat,
                             full_state.position.lon)
 
-        att = EulerAttitude(full_state.attitude.theta,
-                            full_state.attitude.phi,
+        att = EulerAttitude(full_state.attitude.phi,
+                            full_state.attitude.theta,
                             full_state.attitude.psi)
 
         vel = BodyVelocity(full_state.velocity.u,
@@ -128,6 +129,51 @@ class EulerFlatEarth(AircraftDynamicSystem):
             ]
         )
         return x0
+
+    def linearized_model(self, state, aircraft, environment, controls):
+        """
+        Outputs matrices A_long and A_lat that are the lateral and longitudinal state matrices for the linearized system.
+        As done in Etkin [2], these matrices are useful in stability axis.
+
+        """
+
+
+        # get derivatives
+        d = aircraft.calculate_derivatives(state, environment, controls)
+
+        # get inertias
+        m = aircraft.mass
+        Ix = aircraft.inertia[0, 0]
+        Iy = aircraft.inertia[1, 1]
+        Iz = aircraft.inertia[2, 2]
+        Ixz = aircraft.inertia[0, 2]
+        Ixprime = (Ix*Iz - Ixz**2)/Iz
+        Izprime = (Ix*Iz - Ixz**2)/Ix
+        Ixzprime = Ixz/(Ix*Iz - Ixz**2)
+
+        # recover state variables
+        u, v, w = state.velocity.vel_body
+        phi, theta, psi = state.attitude.euler_angles
+        g = environment.gravity_magnitude
+
+        # Longitudinal matrix
+        # Todo : add alpha_dot derivatives
+        A1 = np.array([d['Xu'] / m, d['Xw'] / m, 0, -g*np.cos(theta)])
+        A2 = np.array([d['Zu'], d['Zw'], d['Zq'] + m*u, -m*g*np.sin(theta)])/(m - d['Zw_dot'])
+        A3 = (np.array([d['Mu'], d['Mw'], d['Mq'], 0]) + A2*d['Mw_dot']) / Iy
+        A4 = np.array([0, 0, 1, 0])
+        A_long = np.vstack((A1, A2, A3, A4))
+
+        # Lateral dynamics
+        A1 = np.array([d['Yv']/m, d['Yp']/m, d['Yr']/m - u, g*np.cos(theta)])
+        A2 = np.array([d['Lv']/Ixprime + d['Nv']*Ixzprime, d['Lp']/Ixprime + d['Np']*Ixzprime,
+                       d['Lr']/Ixprime + d['Nr']*Ixzprime, 0])
+        A3 = np.array([d['Lv']*Ixzprime + d['Nv']/Izprime, d['Lp']*Ixzprime + d['Np']/Izprime,
+                       d['Lr'] * Ixzprime + d['Nr'] / Izprime, 0])
+        A4 = np.array([0, 1, np.tan(theta), 0])
+        A_lat = np.vstack((A1, A2, A3, A4))
+
+        return A_long, A_lat
 
 
 # TODO: numba jit
