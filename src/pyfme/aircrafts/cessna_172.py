@@ -95,6 +95,8 @@ class Cessna172(Aircraft):
         # Mass & Inertia
         self.mass = 2300 * lbs2kg   # kg
         self.inertia = np.diag([948, 1346, 1967]) * slugft2_2_kgm2  # kg·m²
+        self.inertia[0, 2] = - 100*slugft2_2_kgm2
+        self.inertia[2, 0] = - 100*slugft2_2_kgm2
 
         # Geometry
         self.Sw = 16.2  # m2
@@ -362,8 +364,7 @@ class Cessna172(Aircraft):
         return self.total_forces, self.total_moments
 
 
-
-    def calculate_derivatives(self, state, environment, controls):
+    def calculate_derivatives(self, state, environment, controls, eps=1e-3):
         """
         Calculate dimensional derivatives of the forces at the vicinity of the state.
         The output consists in 2 dictionaries, one for force one for moment
@@ -377,7 +378,6 @@ class Cessna172(Aircraft):
         Fnames = ['X', 'Y', 'Z']
         Mnames = ['L', 'M', 'N']
 
-        eps = 1e-3
         # F, M = self.calculate_forces_and_moments(state, environment, controls)
 
         # Rotation for stability derivatives in stability axis
@@ -460,7 +460,6 @@ class SimplifiedCessna172(Cessna172):
         self.Cl_delta_rud = .075*np.mean(self.Cl_delta_rud_data)
         self.Cl_delta_aile = np.sum(self.delta_aile_data*self.Cl_delta_aile_data)/np.sum(self.delta_aile_data**2)
 
-
         # XXX: Tunned CN_delta_rud
         self.CN_beta = np.mean(self.CN_beta_data)
         self.CN_p_al = np.sum(self.alpha_data*self.CN_p_data)/np.sum(self.alpha_data**2)
@@ -473,8 +472,6 @@ class SimplifiedCessna172(Cessna172):
         self.RPM_delta_t = 1800
         self.RPM_idle = 1000
         self.Ct_J2, self.Ct_J, self.Ct_0 = np.polyfit(self.J_data, self.Ct_data, 2)
-
-
 
     def _calculate_aero_lon_forces_moments_coeffs(self, state):
         """
@@ -563,5 +560,4 @@ class SimplifiedCessna172(Cessna172):
 
         # We will consider that the engine is aligned along the OX (body) axis
         Ft = np.array([T, 0, 0])
-
         return Ft

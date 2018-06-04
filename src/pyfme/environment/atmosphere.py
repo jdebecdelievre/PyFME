@@ -258,3 +258,9 @@ class ISA1976(Atmosphere):
         a = sqrt(gamma * R_a * T)
 
         return T, p, rho, a
+
+
+class SeaLevel(ISA1976):
+    def __call__(self, h):
+        return super().__call__(h=0.01)
+

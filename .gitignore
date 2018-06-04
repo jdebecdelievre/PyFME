@@ -10,5 +10,9 @@ build
 .spyder*
 
 examples/.ipynb_checkpoints
+validation/.ipynb_checkpoints
 examples/examples-notebook/.ipynb_checkpoints/
+
+.ipynb_checkpoints
+
 

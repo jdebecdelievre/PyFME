@@ -15,6 +15,7 @@ from .angular_velocity import BodyAngularVelocity
 from .acceleration import BodyAcceleration
 from .angular_acceleration import BodyAngularAcceleration
 from pyfme.utils.coordinates import wind2body
+from json import dump
 
 
 class AircraftState:
@@ -77,3 +78,25 @@ class AircraftState:
             getattr(self, keyword).cancel_perturbation(attitude=self.attitude)
 
         return self
+
+    def save_to_json(self, filename):
+        state = dict()
+
+        state['x_e'] = self.position.x_earth
+        state['y_e'] = self.position.y_earth
+        state['z_e'] = self.position.z_earth
+
+        state['phi'] = self.attitude.phi
+        state['theta'] = self.attitude.theta
+        state['psi'] = self.attitude.psi
+
+        state['u'] = self.velocity.u
+        state['v'] = self.velocity.v
+        state['w'] = self.velocity.w
+
+        state['p'] = self.angular_vel.p
+        state['q'] = self.angular_vel.q
+        state['r'] = self.angular_vel.r
+
+        with open(filename, 'w') as f:
+            dump(state, f)

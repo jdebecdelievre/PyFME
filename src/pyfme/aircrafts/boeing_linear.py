@@ -67,7 +67,7 @@ class LinearB747(Aircraft):
             'Nr': -8.934e6
         }
 
-    def calculate_derivatives(self, state, environment, controls):
+    def calculate_derivatives(self, state, environment, controls=None, eps=0):
         return self.stability_derivatives
 
     def trimmed_conditions(self):
