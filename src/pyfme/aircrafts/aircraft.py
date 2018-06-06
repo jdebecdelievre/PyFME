@@ -130,8 +130,63 @@ class Aircraft(object):
         self.Mach = self.TAS / environment.a
         self.q_inf = 0.5 * environment.rho * self.TAS ** 2
 
+
     @abstractmethod
     def calculate_forces_and_moments(self, state, environment, controls):
 
         self._set_current_controls(controls)
         self._calculate_aerodynamics(state, environment)
+
+
+    def calculate_derivatives(self, state, environment, controls, eps=1e-3):
+        """
+        Calculate dimensional derivatives of the forces at the vicinity of the state.
+        The output consists in 2 dictionaries, one for force one for moment
+        key: type of variables derivatives are taken for
+        val : 3x3 np array with X,Y,Z and L,M,N as columns, and the variable we differentiate against in lines
+        (u,v,w ; phi,theta,psi ; p,q,r ; x,y,z)
+        """
+        names = {'velocity': ['u', 'v', 'w'],
+                 'angular_vel': ['p', 'q', 'r'],
+                 'acceleration': ['w_dot']}
+        Fnames = ['X', 'Y', 'Z']
+        Mnames = ['L', 'M', 'N']
+
+        # F, M = self.calculate_forces_and_moments(state, environment, controls)
+
+        # Rotation for stability derivatives in stability axis
+        V = np.sqrt(state.velocity.u**2 + state.velocity.v**2 + state.velocity.w**2)
+        alpha = np.arctan2(state.velocity.w, state.velocity.u)
+        beta = np.arcsin(state.velocity.v / V)
+
+
+        derivatives = {}
+        for keyword in names.keys():
+            for i in range(len(names[keyword])):
+                eps_v0 = np.zeros(3)
+
+                # plus perturb
+                eps_v0[i] = eps/2
+                eps_vec = wind2body(eps_v0, alpha, beta)
+                state.perturbate(eps_vec, keyword)
+                forces_p, moments_p = self.calculate_forces_and_moments(state, environment, controls)
+                forces_p = body2wind(forces_p, alpha, beta)
+                moments_p = body2wind(moments_p, alpha, beta)
+                state.cancel_perturbation()
+
+                # minus perturb
+                eps_v0[i] = - eps/2
+                eps_vec = wind2body(eps_v0, alpha, beta)
+                state.perturbate(eps_vec, keyword)
+                forces_m, moments_m = self.calculate_forces_and_moments(state, environment, controls)
+                forces_m = body2wind(forces_m, alpha, beta)
+                moments_m = body2wind(moments_m, alpha, beta)
+                state.cancel_perturbation()
+
+                k = names[keyword][i]
+                for j in range(3):
+                    # print(Fnames[j] + k, forces[j])
+                    derivatives[Fnames[j] + k] = (forces_p[j] - forces_m[j]) / eps
+                    derivatives[Mnames[j] + k] = (moments_p[j] - moments_m[j]) / eps
+
+        return derivatives

@@ -417,14 +417,6 @@ class Cessna172(Aircraft):
 
         return derivatives
 
-    def build_linear_system(self, state, environment, controls):
-        """
-        Building linear system as described in Etkin. For full linearized equations see page 113. The variables are
-        delta_u, w, q and delta_theta for the long. system,. and v,p,r and psi for the lateral one.
-        /!\ Important notice: Ixz is defined as done in Roskam
-        """
-        ## TODO : Verify definitions for Izx
-
 
 class SimplifiedCessna172(Cessna172):
     def __init__(self):
