@@ -98,25 +98,14 @@ class Simulation:
 
         Parameters
         ----------
-        aircraft : Aircraft 
-            Aircraft model
         system : System
             System model
-        environment : Environment
-            Environment model.
         save_vars : dict, opt
             Dictionary containing the names of the variables to be saved and
             the object and attribute where it is calculated. If not given, the
             ones set in `_default_save_vars` are used.
         """
         self.system = copy.deepcopy(system)
-        self.aircraft = copy.deepcopy(aircraft)
-        self.environment = copy.deepcopy(environment)
-
-        self.system.update_simulation = self.update
-
-        self.controls = controls
-
         self.dt = dt
         self.verbose = verbose
 
@@ -128,18 +117,6 @@ class Simulation:
     @property
     def time(self):
         return self.system.time
-
-    def update(self, time, state):
-        self.environment.update(state)
-
-        controls = self._get_current_controls(time)
-
-        self.aircraft.calculate_forces_and_moments(
-            state,
-            self.environment,
-            controls
-        )
-        return self
 
     def propagate(self, time):
         """Run the simulation by integrating the system until time t.
@@ -166,11 +143,9 @@ class Simulation:
         time_plus_half_dt = time + half_dt
         while self.system.time + dt < time_plus_half_dt:
             t = self.system.time
-            self.environment.update(self.system.full_state)
-            controls = self._get_current_controls(t)
-            self.aircraft.calculate_forces_and_moments(self.system.full_state,
-                                                       self.environment,
-                                                       controls)
+            controls = self._get_current_controls(controls, t)
+            self.system.update(self.system.full_state)
+
             try:
                 self.system.time_step(dt)
             except AlphaBetaRangeError:
@@ -197,7 +172,7 @@ class Simulation:
                 operator.attrgetter(value_pointer)(self)
             )
 
-    def _get_current_controls(self, time):
+    def _get_current_controls(self, controls, time):
         """Get the control values for the current time step for the given
         input functions.
 
@@ -217,5 +192,5 @@ class Simulation:
         simulation (predefined inputs). However, if the AP is active,
         controls will be also function of the system state and environment.
         """
-        c = {c_name: c_fun(time) for c_name, c_fun in self.controls.items()}
+        c = {c_name: c_fun(time) for c_name, c_fun in controls.items()}
         return c

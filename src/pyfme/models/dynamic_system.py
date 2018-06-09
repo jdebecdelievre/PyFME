@@ -213,7 +213,7 @@ class AircraftDynamicSystem(DynamicSystem):
     steady_state_trim_fun
     time_step
     """
-    def __init__(self, t0, full_state, method='RK45', options=None):
+    def __init__(self, aircraft, environment, method='RK45', options=None):
         """Aircraft Dynamic system initialization.
 
         Parameters
@@ -228,15 +228,21 @@ class AircraftDynamicSystem(DynamicSystem):
         options : dict, opt
             Options accepted by the integration method.
         """
-        x0 = self._get_state_vector_from_full_state(full_state)
-        self.full_state = self._adapt_full_state_to_dynamic_system(full_state)
+        self.aircraft = aircraft
+        self.environment = environment
 
-        super().__init__(t0, x0, method=method, options=options)
+    def update(self, time, state, controls):
+        self.environment.update(state)
 
-        self.update_simulation = None
+        self.aircraft.calculate_forces_and_moments(
+            state,
+            self.environment,
+            controls
+        )
+        return self
 
     @abstractmethod
-    def _adapt_full_state_to_dynamic_system(self, full_state):
+    def statevec2stateobj(self, full_state):
         """Transforms the given state to the one used in the
         AircraftDynamicSystem in order to initialize dynamic's system
         initial state.
@@ -309,22 +315,3 @@ class AircraftDynamicSystem(DynamicSystem):
         """
         raise NotImplementedError
 
-    def time_step(self, dt):
-        """Perform an integration time step
-
-        Parameters
-        ----------
-        dt : float
-            Time step for integration
-
-        Returns
-        -------
-        full_state : AircraftState
-            Aircraft's state after integration time step
-        """
-        super().time_step(dt)
-        # Now self.state_vector and state_vector_dot are updated
-        self._update_full_system_state_from_state(self.state_vector,
-                                                  self.state_vector_dot)
-
-        return self.full_state
