@@ -309,6 +309,14 @@ def hor2wind(hor_coords, gamma, mu, chi):
     return wind_coords
 
 
+class AlphaBetaRangeError(Exception):
+    """Exception raised if alpha and beta get too big
+    """
+
+    def __init__(self, message):
+        self.message = message
+
+
 def check_alpha_beta_range(alpha, beta):
     """Check alpha, beta values are inside the defined range. This
     comprobation can also detect if the value of the angle is in degrees in
@@ -319,9 +327,9 @@ def check_alpha_beta_range(alpha, beta):
     beta_min, beta_max = (-np.pi, np.pi)
 
     if not (alpha_min <= alpha <= alpha_max):
-        raise ValueError('Alpha value is not inside correct range')
+        raise AlphaBetaRangeError('Alpha value is not inside correct range')
     elif not (beta_min <= beta <= beta_max):
-        raise ValueError('Beta value is not inside correct range')
+        raise AlphaBetaRangeError('Beta value is not inside correct range')
 
 
 def body2wind(body_coords, alpha, beta):

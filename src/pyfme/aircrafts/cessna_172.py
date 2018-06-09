@@ -95,8 +95,13 @@ class Cessna172(Aircraft):
         # Mass & Inertia
         self.mass = 2300 * lbs2kg   # kg
         self.inertia = np.diag([948, 1346, 1967]) * slugft2_2_kgm2  # kg·m²
-        self.inertia[0, 2] = - 100*slugft2_2_kgm2
-        self.inertia[2, 0] = - 100*slugft2_2_kgm2
+        self.inertia[0, 2] = - 10000*slugft2_2_kgm2
+        self.inertia[2, 0] = - 10000*slugft2_2_kgm2
+        self.inertia[1, 0] = - 20000*slugft2_2_kgm2
+        self.inertia[0, 1] = - 20000*slugft2_2_kgm2
+        self.inertia[1, 2] = - 10000*slugft2_2_kgm2
+        self.inertia[2, 1] = - 10000*slugft2_2_kgm2
+        self.inertia_inverse = np.linalg.inv(self.inertia)
 
         # Geometry
         self.Sw = 16.2  # m2

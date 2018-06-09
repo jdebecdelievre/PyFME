@@ -24,6 +24,7 @@ from pyfme.models.state import (
 )
 from pyfme.utils.coordinates import body2wind, wind2body
 import math
+from numba import jit
 
 _FLOAT_EPS_4 = np.finfo(float).eps * 4.0
 
@@ -45,10 +46,11 @@ class EulerFlatEarth(AircraftDynamicSystem):
 
         mass = updated_simulation.aircraft.mass
         inertia = updated_simulation.aircraft.inertia
+        inertia_inverse = updated_simulation.aircraft.inertia_inverse
         forces = updated_simulation.aircraft.total_forces
         moments = updated_simulation.aircraft.total_moments
 
-        rv = _system_equations(t, x, mass, inertia, forces, moments)
+        rv = _system_equations(t, x, mass, inertia, inertia_inverse, forces, moments)
 
         return rv
 
@@ -63,13 +65,14 @@ class EulerFlatEarth(AircraftDynamicSystem):
 
         mass = aircraft.mass
         inertia = aircraft.inertia
+        inertia_inverse = aircraft.inertia_inverse
         forces = aircraft.total_forces
         moments = aircraft.total_moments
 
         t0 = 0
         x0 = self._get_state_vector_from_full_state(full_state)
 
-        return _system_equations(t0, x0, mass, inertia, forces, moments)
+        return _system_equations(t0, x0, mass, inertia, inertia_inverse, forces, moments)
 
     def steady_state_trim_fun(self, full_state, environment, aircraft,
                               controls):
@@ -174,6 +177,8 @@ class EulerFlatEarth(AircraftDynamicSystem):
             Iy = I[1, 1]
             Iz = I[2, 2]
             Ixz = - I[0, 2]
+            assert abs(I[1,0]) < 1e-10 and abs(I[2,0]) < 1e-10, "This method is only valid for symmetrical aircrafts"
+
             Ixprime = (Ix*Iz - Ixz**2)/Iz
             Izprime = (Ix*Iz - Ixz**2)/Ix
             Ixzprime = Ixz/(Ix*Iz - Ixz**2)
@@ -371,8 +376,9 @@ def body2wind4attitude(eps_v0, alpha, beta):
     eps_vec = body2wind(eps_vec, alpha, beta)
     return np.array([eps_vec[1], eps_vec[0], eps_vec[2]])
 
-# TODO: numba jit
-def _system_equations(time, state_vector, mass, inertia, forces, moments):
+
+@jit
+def _system_equations(time, state_vector, mass, inertia, inertia_inverse, forces, moments):
     """Euler flat earth equations: linear momentum equations, angular momentum
     equations, angular kinematic equations, linear kinematic
     equations.
@@ -423,6 +429,8 @@ def _system_equations(time, state_vector, mass, inertia, forces, moments):
     """
     # Note definition of total_moments of inertia p.21 Gomez Tierno, et al
     # Mecánica de vuelo
+    I = inertia
+    invI = inertia_inverse
     Ix = inertia[0, 0]
     Iy = inertia[1, 1]
     Iz = inertia[2, 2]
@@ -432,6 +440,7 @@ def _system_equations(time, state_vector, mass, inertia, forces, moments):
     L, M, N = moments
 
     u, v, w = state_vector[0:3]
+    omega = state_vector[3:6]
     p, q, r = state_vector[3:6]
     theta, phi, psi = state_vector[6:9]
 
@@ -441,13 +450,14 @@ def _system_equations(time, state_vector, mass, inertia, forces, moments):
     dw_dt = Fz / mass + q * u - p * v
 
     # Angular momentum equations
-    dp_dt = (L * Iz + N * Jxz - q * r * (Iz ** 2 - Iz * Iy + Jxz ** 2) +
-             p * q * Jxz * (Ix + Iz - Iy)) / (Ix * Iz - Jxz ** 2)
-    dq_dt = (M + (Iz - Ix) * p * r - Jxz * (p ** 2 - r ** 2)) / Iy
-    dr_dt = (L * Jxz + N * Ix + p * q * (Ix ** 2 - Ix * Iy + Jxz ** 2) -
-             q * r * Jxz * (Iz + Ix - Iy)) / (Ix * Iz - Jxz ** 2)
+    dp_dt, dq_dt, dr_dt = invI @ (moments - np.cross(omega, (I @ omega)))
+    # dp_dt = (L * Iz +  N * Jxz - q * r * (Iz ** 2 - Iz * Iy + Jxz ** 2) +
+    #          p * q * Jxz * (Ix + Iz - Iy)) / (Ix * Iz - Jxz ** 2)
+    # dq_dt = (M + (Iz - Ix) * p * r - Jxz * (p ** 2 - r ** 2)) / Iy
+    # dr_dt = (L * Jxz + N * Ix + p * q * (Ix ** 2 - Ix * Iy + Jxz ** 2) -
+    #          q * r * Jxz * (Iz + Ix - Iy)) / (Ix * Iz - Jxz ** 2)
 
-    # Angular Kinematic equations
+    # Angular Kinematic equations (min and max to prevent blow up)
     dtheta_dt = q * cos(phi) - r * sin(phi)
     dphi_dt = p + (q * sin(phi) + r * cos(phi)) * np.tan(theta)
     dpsi_dt = (q * sin(phi) + r * cos(phi)) / cos(theta)

@@ -14,6 +14,7 @@ import operator
 
 import pandas as pd
 import tqdm
+from pyfme.utils.coordinates import AlphaBetaRangeError
 
 
 class Simulation:
@@ -91,13 +92,13 @@ class Simulation:
     }
 
     def __init__(self, aircraft, system, environment, controls, dt=0.01,
-                 save_vars=None):
+                 save_vars=None, verbose=True):
         """
         Simulation object
 
         Parameters
         ----------
-        aircraft : Aircraft
+        aircraft : Aircraft 
             Aircraft model
         system : System
             System model
@@ -117,6 +118,7 @@ class Simulation:
         self.controls = controls
 
         self.dt = dt
+        self.verbose = verbose
 
         if not save_vars:
             self._save_vars = self._default_save_vars
@@ -156,7 +158,8 @@ class Simulation:
         dt = self.dt
         half_dt = self.dt/2
 
-        bar = tqdm.tqdm(total=time, desc='time', initial=self.system.time)
+        if self.verbose:
+            bar = tqdm.tqdm(total=time, desc='time', initial=self.system.time)
 
         # To deal with floating point issues we cannot check equality to
         # final time to finish propagation
@@ -168,11 +171,17 @@ class Simulation:
             self.aircraft.calculate_forces_and_moments(self.system.full_state,
                                                        self.environment,
                                                        controls)
-            self.system.time_step(dt)
+            try:
+                self.system.time_step(dt)
+            except AlphaBetaRangeError:
+                break
             self._save_time_step()
-            bar.update(dt)
 
-        bar.close()
+            if self.verbose:
+                bar.update(dt)
+
+        if self.verbose:
+            bar.close()
 
         results = pd.DataFrame(self.results)
         results.set_index('time', inplace=True)
