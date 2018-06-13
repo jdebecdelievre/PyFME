@@ -122,8 +122,8 @@ class AircraftDynamicSystem:
         raise NotImplementedError
 
 class BodyAxisState:
-    def __init__(self, state_vec=np.array([]), from_json=None):
-        self.info = ["x_earth","y_eath","z_earth", "phi","theta","psi", "u","v","w", "p","q","r"]
+    def __init__(self, state_vec=-np.ones(12), from_json=None):
+        self.info = ["x_earth","y_earth","z_earth", "phi","theta","psi", "u","v","w", "p","q","r"]
         assert (state_vec.size == 12 or state_vec.size == 0)
         self.vec = state_vec
         if from_json != None:

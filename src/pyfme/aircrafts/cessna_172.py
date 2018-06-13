@@ -180,10 +180,10 @@ class Cessna172(Aircraft):
     def get_controls(self, t, controls_sequence):
         c = ConventionalControls(np.zeros(4))
         for c_name, c_fun in controls_sequence.items():
-            try:
+            if hasattr(c, c_name):
                 setattr(c, c_name, c_fun(t))
-            except AttributeError:
-                print(f"Wrong argument name {c_name}")
+            else:
+                raise AttributeError
         return c
 
     def _calculate_aero_lon_forces_moments_coeffs(self, alpha, V, state, controls):
@@ -332,6 +332,7 @@ class Cessna172(Aircraft):
 
         total_forces = Ft + Fg + Fa
         total_moments = np.array([l, m, n])
+        print(total_moments)
         return total_forces, total_moments
 
 
@@ -483,10 +484,11 @@ class SimplifiedCessna172(Cessna172):
         p, q, r = state.euler_ang_rate
 
         # Recompute CL
+        delta_elev = np.rad2deg(controls.delta_elevator)
         CL = (
             self.CL_0 +
             self.CL_alpha*alpha +
-            self.CL_delta_elev*controls.delta_elevator +
+            self.CL_delta_elev*delta_elev +
             self.CL_q * q * self.chord/(2*V)
         )
         CL = CL if abs(CL) < self.CL_MAX else np.sign(CL)*self.CL_MAX

@@ -33,7 +33,7 @@ class EulerFlatEarth(AircraftDynamicSystem):
 
     def __init__(self, aircraft, environment):
         super().__init__(aircraft, environment)
-        self.info = ["x_earth","y_eath","z_earth", "phi","theta","psi", "u","v","w", "p","q","r"]
+        self.info = ["x_earth","y_earth","z_earth", "phi","theta","psi", "u","v","w", "p","q","r"]
 
     @jit
     def _system_equations(self, t, state_vec, controls_sequence):

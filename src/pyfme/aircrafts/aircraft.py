@@ -121,7 +121,7 @@ class Aircraft(object):
         return derivatives
 
 class ConventionalControls:
-    def __init__(self, controls_vec=np.array([])):
+    def __init__(self, controls_vec=-np.ones(4)):
         self.info = 'controls.vec=[delta_elevator, delta_aileron,delta_rudder,delta_throttle]'
         if controls_vec.size == 0:
             raise IOError(self.info)
