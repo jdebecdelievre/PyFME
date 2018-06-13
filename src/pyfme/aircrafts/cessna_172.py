@@ -78,11 +78,11 @@ import pdb
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import linregress
 
-from pyfme.aircrafts.aircraft import Aircraft
+from pyfme.aircrafts.aircraft import Aircraft, ConventionalControls
 from pyfme.models.constants import slugft2_2_kgm2, lbs2kg
 from pyfme.utils.coordinates import wind2body, body2wind
 from copy import deepcopy as cp
-
+from collections import namedtuple
 
 class Cessna172(Aircraft):
     """
@@ -91,6 +91,8 @@ class Cessna172(Aircraft):
     """
 
     def __init__(self):
+
+        super().__init__()
 
         # Mass & Inertia
         self.mass = 2300 * lbs2kg   # kg
@@ -167,67 +169,28 @@ class Cessna172(Aircraft):
         self.delta_t_data = np.array([0.0, 1.0])
         self.omega_data = np.array([1000.0, 2800.0])  # min RPM & max RPM
 
-        # CONTROLS
-        self.controls = {'delta_elevator': 0,
-                         'delta_aileron': 0,
-                         'delta_rudder': 0,
-                         'delta_t': 0}
-
         self.control_limits = {'delta_elevator': (np.deg2rad(-26),
                                                   np.deg2rad(28)),  # rad
                                'delta_aileron': (np.deg2rad(-15),
                                                  np.deg2rad(20)),  # rad
                                'delta_rudder': (np.deg2rad(-16),
                                                 np.deg2rad(16)),  # rad
-                               'delta_t': (0, 1)}  # non-dimensional
+                               'delta_throttle': (0, 1)}  # non-dimensional
 
-        # Aerodynamic Coefficients
-        self.CL, self.CD, self.Cm = 0, 0, 0
-        self.CY, self.Cl, self.Cn = 0, 0, 0
+    def get_controls(self, t, controls_sequence):
+        c = ConventionalControls(np.zeros(4))
+        for c_name, c_fun in controls_sequence.items():
+            try:
+                setattr(c, c_name, c_fun(t))
+            except AttributeError:
+                print(f"Wrong argument name {c_name}")
+        return c
 
-        # Thrust Coefficient
-        self.Ct = 0
-
-        self.total_forces = np.zeros(3)
-        self.total_moments = np.zeros(3)
-        # self.load_factor = 0
-
-        # Velocities
-        self.TAS = 0  # True Air Speed.
-        self.CAS = 0  # Calibrated Air Speed.
-        self.EAS = 0  # Equivalent Air Speed.
-        self.Mach = 0  # Mach number
-        self.q_inf = 0  # Dynamic pressure at infinity (Pa)
-
-        # Angles
-        self.alpha = 0  # rad
-        self.beta = 0  # rad
-        self.alpha_dot = 0  # rad/s
-
-    @property
-    def delta_elevator(self):
-        return self.controls['delta_elevator']
-
-    @property
-    def delta_rudder(self):
-        return self.controls['delta_rudder']
-
-    @property
-    def delta_aileron(self):
-        return self.controls['delta_aileron']
-
-    @property
-    def delta_t(self):
-        return self.controls['delta_t']
-
-    def _calculate_aero_lon_forces_moments_coeffs(self, state):
-        delta_elev = np.rad2deg(self.controls['delta_elevator'])  # deg
-        alpha_DEG = np.rad2deg(self.alpha)  # deg
+    def _calculate_aero_lon_forces_moments_coeffs(self, alpha, V, state, controls):
+        delta_elev = np.rad2deg(controls.delta_elevator)  # deg
+        alpha_DEG = np.rad2deg(alpha)  # deg
         c = self.chord  # m
-        V = self.TAS  # m/s
-        p, q, r = (state.angular_vel.p, state.angular_vel.q,
-                   state.angular_vel.r)  # rad/s
-        alpha_dot = self.alpha_dot
+        p, q, r = state.euler_ang_rate  # rad/s
 
         CD_alpha_interp = np.interp(alpha_DEG, self.alpha_data, self.CD_data)
         CD_delta_elev_interp_ = RectBivariateSpline(self.delta_elev_data,
@@ -245,27 +208,27 @@ class Cessna172(Aircraft):
         CM_alphadot = np.interp(alpha_DEG, self.alpha_data, self.CM_alphadot_data)
         CM_delta_elev_interp = np.interp(delta_elev, self.delta_elev_data, self.CM_delta_elev_data)
 
-        self.CL = (
+        CL = (
             CL_alpha_interp +
             CL_delta_elev_interp +
-            c/(2*V) * (CL_q * q + CL_alphadot * alpha_dot)
+            c/(2*V) * (CL_q * q)
         )
-        self.CD = CD_alpha_interp + CD_delta_elev_interp
+        CD = CD_alpha_interp + CD_delta_elev_interp
 
-        self.CM = (
+        CM = (
             CM_alpha_interp +
             CM_delta_elev_interp +
-            c/(2*V) * (2*CM_q * q + CM_alphadot * alpha_dot)
+            c/(2*V) * (2*CM_q * q)
         )
         # FIXME: CM_q multiplicado por 2 hasta que alpha_dot pueda ser calculado
+        return CL, CD, CM
 
-    def _calculate_aero_lat_forces_moments_coeffs(self, state):
-        delta_aile = np.rad2deg(self.controls['delta_aileron'])  # deg
-        delta_rud_RAD = self.controls['delta_rudder']  # rad
-        alpha_DEG = np.rad2deg(self.alpha)  # deg
+    def _calculate_aero_lat_forces_moments_coeffs(self, alpha, beta, V, state, controls):
+        delta_aile = np.rad2deg(controls.delta_aileron)  # deg
+        delta_rud_RAD = controls.delta_rudder # rad
+        alpha_DEG = np.rad2deg(alpha)  # deg
         b = self.span
-        V = self.TAS
-        p, q, r = state.angular_vel.p, state.angular_vel.q, state.angular_vel.r
+        p, q, r = state.euler_ang_rate
 
         CY_beta = np.interp(alpha_DEG, self.alpha_data, self.CY_beta_data)
         CY_p = np.interp(alpha_DEG, self.alpha_data, self.CY_p_data)
@@ -287,48 +250,52 @@ class Cessna172(Aircraft):
                                                     self.CN_delta_aile_data)
         CN_delta_aile_interp = CN_delta_aile_interp_(delta_aile, alpha_DEG)[0, 0]
 
-        self.CY = (
-            CY_beta * self.beta +
+        CY = (
+            CY_beta * beta +
             CY_delta_rud * delta_rud_RAD +
             b/(2 * V) * (CY_p * p + CY_r * r)
         )
         # XXX: Tunned Cl_delta_rud
-        self.Cl = (
-            0.1*Cl_beta * self.beta +
+        Cl = (
+            0.1*Cl_beta * beta +
             Cl_delta_aile_interp +
             0.075*Cl_delta_rud * delta_rud_RAD +
             b/(2 * V) * (Cl_p * p + Cl_r * r)
         )
         # XXX: Tunned CN_delta_rud
-        self.CN = (
-            CN_beta * self.beta +
+        CN = (
+            CN_beta * beta +
             CN_delta_aile_interp +
             0.075*CN_delta_rud * delta_rud_RAD +
             b/(2 * V) * (CN_p * p + CN_r * r)
         )
+        return CY, Cl, CN
 
-    def _calculate_aero_forces_moments(self, state):
-        q = self.q_inf
+    def _calculate_aero_forces_moments(self, conditions, state, controls):
+        q_inf = conditions['q_inf']
+        V = conditions['TAS']
+        alpha = conditions['alpha']
+        beta = conditions['beta']
+
         Sw = self.Sw
         c = self.chord
         b = self.span
 
-        self._calculate_aero_lon_forces_moments_coeffs(state)
-        self._calculate_aero_lat_forces_moments_coeffs(state)
+        CL, CD, Cm = self._calculate_aero_lon_forces_moments_coeffs(alpha, V, state, controls)
+        CY, Cl, Cn = self._calculate_aero_lat_forces_moments_coeffs(alpha, beta, V, state, controls)
 
-        L = q * Sw * self.CL
-        D = q * Sw * self.CD
-        Y = q * Sw * self.CY
-        l = q * Sw * b * self.Cl
-        m = q * Sw * c * self.CM
-        n = q * Sw * b * self.CN
+        L = q_inf * Sw * CL
+        D = q_inf * Sw * CD
+        Y = q_inf * Sw * CY
+        l = q_inf * Sw * b * Cl
+        m = q_inf * Sw * c * Cm
+        n = q_inf * Sw * b * Cn
 
         return L, D, Y, l, m, n
 
-    def _calculate_thrust_forces_moments(self, environment):
-        delta_t = self.controls['delta_t']
+    def _calculate_thrust_forces_moments(self, TAS, environment, controls):
+        delta_t = controls.delta_throttle
         rho = environment.rho
-        V = self.TAS
         prop_rad = self.propeller_radius
 
         # In this model the throttle controls the revolutions of the propeller
@@ -338,7 +305,7 @@ class Cessna172(Aircraft):
 
         # We calculate the relation between the thrust coefficient Ct and the
         # advance ratio J using the program JavaProp
-        J = (np.pi * V) / (omega_RAD * prop_rad)  # non-dimensional
+        J = (np.pi * TAS) / (omega_RAD * prop_rad)  # non-dimensional
         Ct_interp = np.interp(J, self.J_data, self.Ct_data)  # non-dimensional
 
         T = (2/np.pi)**2 * rho * (omega_RAD * prop_rad)**2 * Ct_interp  # N
@@ -349,24 +316,23 @@ class Cessna172(Aircraft):
         return Ft
 
     def calculate_forces_and_moments(self, state, environment, controls):
-        # Update controls and aerodynamics
-        super().calculate_forces_and_moments(state, environment, controls)
+        # Estimate aerodynamic conditions
+        conditions = self.calculate_aero_conditions(state, environment)
+        TAS = conditions['TAS']
+        alpha = conditions['alpha']
+        beta = conditions['beta']
 
-        Ft = self._calculate_thrust_forces_moments(environment)
-        L, D, Y, l, m, n = self._calculate_aero_forces_moments(state)
+        Ft = self._calculate_thrust_forces_moments(TAS, environment, controls)
+        L, D, Y, l, m, n = self._calculate_aero_forces_moments(conditions, state, controls)
         Fg = environment.gravity_vector * self.mass
 
         Fa_wind = np.array([-D, Y, -L])
-        Fa_body = wind2body(Fa_wind, self.alpha, self.beta)
+        Fa_body = wind2body(Fa_wind, alpha, beta)
         Fa = Fa_body
 
-        self.total_forces = Ft + Fg + Fa
-        self.total_moments = np.array([l, m, n])
-
-        self.Fa_wind = Fa_wind
-
-        # return state.velocity._vel_body, state.angular_vel._vel_ang_body
-        return self.total_forces, self.total_moments
+        total_forces = Ft + Fg + Fa
+        total_moments = np.array([l, m, n])
+        return total_forces, total_moments
 
 
     def calculate_derivatives(self, state, environment, controls, eps=1e-3):
@@ -470,7 +436,7 @@ class SimplifiedCessna172(Cessna172):
         self.RPM_idle = 1000
         self.Ct_J2, self.Ct_J, self.Ct_0 = np.polyfit(self.J_data, self.Ct_data, 2)
 
-    def _calculate_aero_lon_forces_moments_coeffs(self, state):
+    def _calculate_aero_lon_forces_moments_coeffs(self, alpha, V, state, controls):
         """
         Simplified dynamics for the Cessna 172: strictly linear dynamics.
         Stability derivatives are considered constant, the value for small angles is kept.
@@ -484,73 +450,81 @@ class SimplifiedCessna172(Cessna172):
 
         """
 
-        delta_elev = np.rad2deg(self.controls['delta_elevator'])  # deg
-        alpha_DEG = np.rad2deg(self.alpha)  # deg
-        alpha_RAD = self.alpha # rad
+        delta_elev = np.rad2deg(controls.delta_elevator)  # deg
+        alpha_DEG = np.rad2deg(alpha)  # deg
+        alpha_RAD = alpha # rad
         c = self.chord  # m
-        V = self.TAS  # m/s
-        p, q, r = (state.angular_vel.p, state.angular_vel.q,
-                   state.angular_vel.r)  # rad/s
+        p, q, r = state.euler_ang_rate  # rad/s
 
-        self.CL = (
+        CL = (
             self.CL_0 +
             self.CL_alpha*alpha_RAD +
             self.CL_delta_elev*delta_elev +
             self.CL_q * q * c/(2*V)
         )
         # STALL
-        self.CL = self.CL if abs(self.CL) < self.CL_MAX else np.sign(self.CL)*self.CL_MAX
+        CL = CL if abs(CL) < self.CL_MAX else np.sign(CL)*self.CL_MAX
 
-        self.CD = self.CD_0 + self.CD_K1*self.CL**2
+        CD = self.CD_0 + self.CD_K1*CL**2
 
-        self.CM = (
+        CM = (
             self.CM_0 +
             (self.CM_alpha2*alpha_DEG + self.CM_alpha)*alpha_DEG +
             self.CM_delta_elev * delta_elev +
             self.CM_q * q * c/(2*V)
         )
+        return CL, CD, CM
 
-    def _calculate_aero_lat_forces_moments_coeffs(self, state):
-        delta_aile = np.rad2deg(self.controls['delta_aileron'])  # deg
-        delta_rud_RAD = self.controls['delta_rudder']  # rad
-        alpha_DEG = np.rad2deg(self.alpha)  # deg
+    def _calculate_aero_lat_forces_moments_coeffs(self, alpha, beta, V, state, controls):
+        delta_aile = np.rad2deg(controls.delta_aileron)  # deg
+        delta_rud_RAD = controls.delta_rudder  # rad
+        alpha_DEG = np.rad2deg(alpha)  # deg
         b = self.span
-        V = self.TAS
-        p, q, r = state.angular_vel.p, state.angular_vel.q, state.angular_vel.r
+        p, q, r = state.euler_ang_rate
 
-        self.CY = (
-            self.CY_beta * self.beta +
+        # Recompute CL
+        CL = (
+            self.CL_0 +
+            self.CL_alpha*alpha +
+            self.CL_delta_elev*controls.delta_elevator +
+            self.CL_q * q * self.chord/(2*V)
+        )
+        CL = CL if abs(CL) < self.CL_MAX else np.sign(CL)*self.CL_MAX
+
+        CY = (
+            self.CY_beta * beta +
             self.CY_delta_rud * delta_rud_RAD +
             b/(2 * V) * (self.CY_p * p + self.CY_r * r)
         )
 
-        self.Cl = (
-            self.Cl_beta * self.beta +
+        Cl = (
+            self.Cl_beta * beta +
             self.Cl_delta_aile * delta_aile +
             self.Cl_delta_rud * delta_rud_RAD +
-            b/(2 * V) * (self.Cl_p * p + self.Cl_r_cl * self.CL * r)
+            b/(2 * V) * (self.Cl_p * p + self.Cl_r_cl * CL * r)
         )
 
-        self.CN = (
-            self.CN_beta * self.beta +
-            (self.CN_delta_aile_cl*self.CL*delta_aile) +
+        CN = (
+            self.CN_beta * beta +
+            (self.CN_delta_aile_cl*CL*delta_aile) +
             self.CN_delta_rud * delta_rud_RAD +
-            b/(2 * V) * (self.CN_p_al*alpha_DEG * p + (self.CN_r_cl*self.CL**2 + self.CN_r_0) * r)
+            b/(2 * V) * (self.CN_p_al*alpha_DEG * p + (self.CN_r_cl*CL**2 + self.CN_r_0) * r)
         )
+        return CY, Cl, CN
 
-    def _calculate_thrust_forces_moments(self, environment):
-        delta_t = self.controls['delta_t']
+    def _calculate_thrust_forces_moments(self, TAS, environment, controls):
+        delta_t = controls.delta_throttle
         rho = environment.rho
-        V = self.TAS
         prop_rad = self.propeller_radius
 
-        # throttle controls the revolutions of the propeller linearly.
-        RPM = self.RPM_delta_t*delta_t + self.RPM_idle  # rpm
-        omega_RAD = (RPM * 2 * np.pi) / 60.0  # rad/s
+        # In this model the throttle controls the revolutions of the propeller
+        # linearly. Later on, a much detailed model will be included
+        omega = np.interp(delta_t, self.delta_t_data, self.omega_data)  # rpm
+        omega_RAD = (omega * 2 * np.pi) / 60.0  # rad/s
 
         # We calculate the relation between the thrust coefficient Ct and the
         # advance ratio J using the program JavaProp
-        J = (np.pi * V) / (omega_RAD * prop_rad)  # non-dimensional
+        J = (np.pi * TAS) / (omega_RAD * prop_rad)  # non-dimensional
         Ct = self.Ct_J2*J + self.Ct_J*J + self.Ct_0  # non-dimensional
 
         T = (2/np.pi)**2 * rho * (omega_RAD * prop_rad)**2 * Ct  # N

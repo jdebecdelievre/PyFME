@@ -64,7 +64,7 @@ class Atmosphere(object):
 
         """
         # Geopotential altitude
-        self._geopotential_alt = geometric2geopotential(state.position.height)
+        self._geopotential_alt = geometric2geopotential(state.height)
 
         T, p, rho, a = self.__call__(self._geopotential_alt)
 

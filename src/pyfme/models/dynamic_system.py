@@ -17,77 +17,47 @@ from abc import abstractmethod
 
 import numpy as np
 from scipy.integrate import solve_ivp
+from json import dump, load
+import pandas as pd
 
 
-class DynamicSystem:
-    """Dynamic system class to integrate initial value problems numerically.
-    Serves as base for implementation of dynamic systems.
-
-    Attributes
-    ----------
-    state_vector : ndarray
-        State vector.
-    time : float
-        Current integration time.
-
-    Methods
-    -------
-    integrate(t_end, t_eval=None, dense_output=True)
-        Integrate the system from current time to t_end.
-    fun(t, x)
-        Dynamic system equations
-    """
-
-    def __init__(self, t0, x0, method='RK45', options=None):
-        """ Dynamic system
+class AircraftDynamicSystem:
+    def __init__(self, aircraft, environment):
+        """Aircraft Dynamic system initialization.
 
         Parameters
         ----------
-        t0 : float
-            Initial time.
-        x0 : array_like
-            Initial state vector.
-        method : str, opt
-            Integration method. Accepts any method implemented in
-            scipy.integrate.solve_ivp.
-        options : dict
-            Options for the selected method.
+        environment : Environment
+            Environment Object
+        aircraft : Aircraft
+            Aircraft object
         """
+        self.aircraft = aircraft
+        self.environment = environment
 
-        if options is None:
-            options = {}
-        self._state_vector = x0
-        self._state_vector_dot = np.zeros_like(x0)
-        self._time = t0
+    @abstractmethod
+    def _system_equations(self, t, state_vec, controls_sequence):
+        raise NotImplementedError
 
-        self._method = method
-        self._options = options
-
-    @property
-    def state_vector(self):
-        return self._state_vector
-
-    @property
-    def state_vector_dot(self):
-        return self._state_vector_dot
-
-    @property
-    def time(self):
-        return self._time
-
-    def integrate(self, t_end, t_eval=None, dense_output=True):
+    def integrate(self, t_end, x0, controls_sequence, t_ini=0, dense_output=False,
+                  dt_eval=0.01, method='RK45', options=None):
         """Integrate the system from current time to t_end.
 
         Parameters
         ----------
         t_end : float
             Final time.
-        t_eval : array_like, opt
-            Times at which to store the computed solution, must be sorted
-            and lie within current time and t_end. If None (default), use
-            points selected by a solver.
+        x0 : array_like or object
+            Initial state vector or Object.
         dense_output: bool, opt
             Whether to compute a continuous solution. Default is True.
+        dt_eval : float
+            spacing between points
+        method : str, opt
+            Integration method. Accepts any method implemented in
+            scipy.integrate.solve_ivp.
+        options : dict
+            Options for the selected method.
 
         Returns
         -------
@@ -124,194 +94,204 @@ class DynamicSystem:
             True if the solver reached the interval end or a termination event
              occurred (status >= 0).
         """
-        # TODO: this mehtod is intended to return the whole integration history
-        # meanwhile, only time_step is called
-        # How dos it update the full system?
-        x0 = self.state_vector
-        t_ini = self.time
+        if options == None:
+            options = {'max_step': dt_eval} # max step is distance between 2 samples
 
+        # define time options
         t_span = (t_ini, t_end)
-        method = self._method
+        t_eval = np.arange(t_ini, t_end, dt_eval)
 
-        # TODO: prepare to use jacobian in case it is defined
-        sol = solve_ivp(self.fun, t_span, x0, method=method, t_eval=t_eval,
-                        dense_output=dense_output, **self._options)
+        # define function to integrate
+        fun = lambda t, x: self._system_equations(t, x, controls_sequence)
 
-        self._time = sol.t[-1]
-        self._state_vector = sol.y[:, -1]
+        # get vector state if needed
+        if not isinstance(x0, np.ndarray):
+            x0 = np.copy(x0.vec)
 
-        return sol.t, sol.y, sol
+        # solve
+        sol = solve_ivp(fun, t_span, x0, method=method, t_eval=t_eval,
+                        dense_output=dense_output, vectorized=False,
+                        **options)
+        if sol.status != 0:
+            print(sol.message)
 
-    def time_step(self, dt):
-        """Integrate the system from current time to t_end.
-
-        Parameters
-        ----------
-        dt : float
-            Time step.
-
-        Returns
-        -------
-        y : ndarray, shape (n)
-            Solution values at t_end.
-        """
-
-        x0 = self.state_vector
-        t_ini = self.time
-
-        t_span = (t_ini, t_ini + dt)
-        method = self._method
-
-        # TODO: prepare to use jacobian in case it is defined
-        sol = solve_ivp(self.fun_wrapped, t_span, x0, method=method,
-                        **self._options)
-
-        if sol.status == -1:
-            raise RuntimeError(f"Integration did not converge at t={t_ini}")
-
-        self._time = sol.t[-1]
-        self._state_vector = sol.y[:, -1]
-
-        return self._state_vector
+        return pd.DataFrame(sol.y.T, columns=self.info, index=sol.t)
 
     @abstractmethod
-    def fun(self, t, x):
-        """ Right-hand side of the system (dy / dt = f(t, y)). The calling
-        signature is fun(t, x). Here t is a scalar and there are two options
-        for ndarray y.
-        It can either have shape (n,), then fun must return array_like with
-        shape (n,). Or alternatively it can have shape (n, k), then fun must
-        return array_like with shape (n, k), i.e. each column corresponds to a
-        single column in y. The choice between the two options is determined
-        by vectorized argument (see below). The vectorized implementation
-        allows faster approximation of the Jacobian by finite differences
-        (required for stiff solvers).
-        """
+    def trim(self):
         raise NotImplementedError
 
-    def fun_wrapped(self, t, x):
-        # First way that comes to my mind in order to store the derivatives
-        # that are useful for full_state calculation
-        state_dot = self.fun(t, x)
-        self._state_vector_dot = state_dot
-        return state_dot
+class BodyAxisState:
+    def __init__(self, state_vec=np.array([]), from_json=None):
+        self.info = ["x_earth","y_eath","z_earth", "phi","theta","psi", "u","v","w", "p","q","r"]
+        assert (state_vec.size == 12 or state_vec.size == 0)
+        self.vec = state_vec
+        if from_json != None:
+            self.load_from_json(from_json)
 
+    @property
+    def V(self):
+        return np.linalg.norm(self.body_vel)
 
-class AircraftDynamicSystem(DynamicSystem):
-    """Aircraft's Dynamic System
+    # Bunch of names for earth coordinates
+    @property
+    def earth_coordinates(self):
+        return self.vec[:3]
+    @earth_coordinates.setter
+    def earth_coordinates(self, value):
+        self.vec[:3] = value
 
-    Attributes
-    ----------
-    full_state : AircraftState
-        Current aircraft state.
-    update_simulation : fun
-        Function that updates environment and aircraft in order to get
-        proper forces, moments and mass properties for integration steps.
+    @property
+    def x_earth(self):
+        return self.vec[0]
+    @x_earth.setter
+    def x_earth(self, value):
+        self.vec[0] = value
 
-    Methods
-    -------
-    steady_state_trim_fun
-    time_step
-    """
-    def __init__(self, aircraft, environment, method='RK45', options=None):
-        """Aircraft Dynamic system initialization.
+    @property
+    def y_earth(self):
+        return self.vec[1]
+    @y_earth.setter
+    def y_earth(self, value):
+        self.vec[1] = value
 
-        Parameters
-        ----------
-        t0 : float
-            Initial time (s).
-        full_state : AircraftState
-            Initial aircraft's state.
-        method : str, opt
-            Integration method. Any method included in
-            scipy.integrate.solve_ivp can be used.
-        options : dict, opt
-            Options accepted by the integration method.
-        """
-        self.aircraft = aircraft
-        self.environment = environment
+    @property
+    def z_earth(self):
+        return self.vec[2]
+    @z_earth.setter
+    def z_earth(self, value):
+        self.vec[2] = value
 
-    def update(self, time, state, controls):
-        self.environment.update(state)
+    @property
+    def height(self):
+        return -self.vec[2]
 
-        self.aircraft.calculate_forces_and_moments(
-            state,
-            self.environment,
-            controls
+    # Bunch of names for earth coordinates
+    @property
+    def euler_angles(self):
+        return self.vec[3:6]
+    @euler_angles.setter
+    def euler_angles(self, value):
+        self.vec[3:6] = value
+
+    @property
+    def phi(self):
+        return self.vec[3]
+    @phi.setter
+    def phi(self, value):
+        self.vec[3] = value
+
+    @property
+    def theta(self):
+        return self.vec[4]
+    @theta.setter
+    def theta(self, value):
+        self.vec[4] = value
+
+    @property
+    def psi(self):
+        return self.vec[5]
+    @psi.setter
+    def psi(self, value):
+        self.vec[5] = value
+
+    # Bunch of names for body_velocity
+    @property
+    def body_vel(self):
+        return self.vec[6:9]
+    @body_vel.setter
+    def body_vel(self, value):
+        self.vec[6:9] = value
+
+    @property
+    def u(self):
+        return self.vec[6]
+    @u.setter
+    def u(self, value):
+        self.vec[6] = value
+
+    @property
+    def v(self):
+        return self.vec[7]
+    @v.setter
+    def v(self, value):
+        self.vec[7] = value
+
+    @property
+    def w(self):
+        return self.vec[8]
+    @w.setter
+    def w(self, value):
+        self.vec[8] = value
+
+    # Bunch of names for angular_velociy
+    @property
+    def euler_ang_rate(self):
+        return self.vec[9:12]
+    @euler_ang_rate.setter
+    def euler_ang_rate(self, value):
+        self.vec[9:12] = value
+
+    @property
+    def p(self):
+        return self.vec[9]
+    @p.setter
+    def p(self, value):
+        self.vec[9] = value
+
+    @property
+    def q(self):
+        return self.vec[10]
+    @q.setter
+    def q(self, value):
+        self.vec[10] = value
+
+    @property
+    def r(self):
+        return self.vec[11]
+    @r.setter
+    def r(self, value):
+        self.vec[11] = value
+
+    def __repr__(self):
+        rv = (
+            "Aircraft State \n"
+            f"{self.earth_coordinates} \n"
+            f"{self.euler_angles} \n"
+            f"{self.body_vel} \n"
+            f"{self.euler_ang_rate} \n"
         )
-        return self
+        return rv
 
-    @abstractmethod
-    def statevec2stateobj(self, full_state):
-        """Transforms the given state to the one used in the
-        AircraftDynamicSystem in order to initialize dynamic's system
-        initial state.
-        For example, the full state given may be using quaternions for
-        attitude representation, but the Aircraft dynamic system may
-        propagate Euler angles.
+    def save_to_json(self, filename):
+        state = dict()
 
-        Parameters
-        ----------
-        full_state : AircraftState
+        state['x_e'] = self.x_earth
+        state['y_e'] = self.y_earth
+        state['z_e'] = self.z_earth
 
-        """
-        raise NotImplementedError
+        state['phi'] = self.phi
+        state['theta'] = self.theta
+        state['psi'] = self.psi
 
-    @abstractmethod
-    def _update_full_system_state_from_state(self, state, state_dot):
-        """Updates full system's state (AircraftState) based on the
-        implemented dynamic's system state vector and derivative of system's
-        state vector (output of system's equations dx/dt=f(x, t))
+        state['u'] = self.u
+        state['v'] = self.v
+        state['w'] = self.w
 
-        Parameters
-        ----------
-        state : array_like
-            State vector.
-        state_dot : array_like
-            Derivative of state vector.
+        state['p'] = self.p
+        state['q'] = self.q
+        state['r'] = self.r
 
-        """
-        raise NotImplementedError
+        with open(filename, 'w') as f:
+            dump(state, f)
 
-    @abstractmethod
-    def _get_state_vector_from_full_state(self, full_state):
-        """Gets the state vector given the full state.
-
-        Parameters
-        ----------
-        full_state : AircraftState
-            Aircraft's full state
-
-        Returns
-        -------
-        state_vector : ndarray
-            State vector.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def steady_state_trim_fun(self, full_state, environment, aircraft,
-                              controls):
-        """Output from linear and angular momentum conservation equations:
-        ax, ay, az, p, q, r, which must be zero after the steady state
-        trimming process
-
-        Parameters
-        ----------
-        full_state : AircraftState
-            Full aircraft state.
-        environment : Environment
-            Environment in which the aircraft is being trimmed.
-        aircraft : Aircraft
-            Aircraft being trimmed.
-        controls : dict
-            Controls of the aircraft being trimmed.
-
-        Returns
-        -------
-        rv : ndarray
-            Output from linear and angular momentum conservation equations:
-            ax, ay, az, p, q, r.
-        """
-        raise NotImplementedError
+    def load_from_json(self, filename):
+        self.vec = np.zeros(12)
+        with open(filename, 'r') as f:
+            state = load(f)
+        for c_name, c_fun in state.items():
+            try:
+                setattr(self, c_name, c_fun)
+            except AttributeError:
+                print(f"Wrong argument name {c_name}")
 

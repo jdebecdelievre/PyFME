@@ -12,7 +12,7 @@ from abc import abstractmethod
 import numpy as np
 
 from pyfme.utils.anemometry import tas2cas, tas2eas, calculate_alpha_beta_TAS
-
+from pyfme.utils.coordinates import body2wind, wind2body
 
 class Aircraft(object):
 
@@ -27,32 +27,7 @@ class Aircraft(object):
         self.span = 0  # m
 
         # Controls
-        self.controls = {}
         self.control_limits = {}
-
-        # Coefficients
-        # Aero
-        self.CL, self.CD, self.Cm = 0, 0, 0
-        self.CY, self.Cl, self.Cn = 0, 0, 0
-
-        # Thrust
-        self.Ct = 0
-
-        # Forces & moments
-        self.total_forces = np.zeros(3)
-        self.total_moments = np.zeros(3)
-
-        # Velocities
-        self.TAS = 0  # True Air Speed.
-        self.CAS = 0  # Calibrated Air Speed.
-        self.EAS = 0  # Equivalent Air Speed.
-        self.Mach = 0  # Mach number
-        self.q_inf = 0  # Dynamic pressure at infty (Pa)
-
-        # Angles
-        self.alpha = 0  # Angle of attack (AOA).
-        self.beta = 0  # Angle of sideslip (AOS).
-        self.alpha_dot = 0  # Rate of change of AOA.
 
     @property
     def Ixx(self):
@@ -66,77 +41,31 @@ class Aircraft(object):
     def Izz(self):
         return self.inertia[2, 2]
 
-    @property
-    def Fx(self):
-        return self.total_forces[0]
-
-    @property
-    def Fy(self):
-        return self.total_forces[1]
-
-    @property
-    def Fz(self):
-        return self.total_forces[2]
-
-    @property
-    def Mx(self):
-        return self.total_moments[0]
-
-    @property
-    def My(self):
-        return self.total_moments[1]
-
-    @property
-    def Mz(self):
-        return self.total_moments[2]
-
-    def _set_current_controls(self, controls):
-
-        # If a control is not given, the previous value is assigned.
-        for control_name, control_value in controls.items():
-            limits = self.control_limits[control_name]
-            if limits[0] <= control_value <= limits[1]:
-                self.controls[control_name] = control_value
-            else:
-                # TODO: maybe raise a warning and assign max deflection
-                msg = (
-                    f"Control {control_name} out of range ({control_value} "
-                    f"when min={limits[0]} and max={limits[1]})"
-                )
-                raise ValueError(msg)
-
-    def _calculate_aerodynamics(self, state, environment):
+    def calculate_aero_conditions(self, state, environment):
 
         # Velocity relative to air: aerodynamic velocity.
-        aero_vel = state.velocity.vel_body - environment.body_wind
+        aero_vel = state.body_vel - environment.body_wind
 
-        self.alpha, self.beta, self.TAS = calculate_alpha_beta_TAS(
+        conditions = {}
+        conditions['alpha'], conditions['beta'], TAS = calculate_alpha_beta_TAS(
             u=aero_vel[0], v=aero_vel[1], w=aero_vel[2]
         )
+        conditions['TAS'] = TAS
 
         # Setting velocities & dynamic pressure
-        self.CAS = tas2cas(self.TAS, environment.p, environment.rho)
-        self.EAS = tas2eas(self.TAS, environment.rho)
-        self.Mach = self.TAS / environment.a
-        self.q_inf = 0.5 * environment.rho * self.TAS ** 2
+        conditions['CAS'] = tas2cas(TAS, environment.p, environment.rho)
+        conditions['EAS'] = tas2eas(TAS, environment.rho)
+        conditions['Mach'] = TAS / environment.a
+        conditions['q_inf'] = 0.5 * environment.rho * TAS ** 2
+        return conditions
 
-    def _calculate_aerodynamics_2(self, TAS, alpha, beta, environment):
-
-        self.alpha, self.beta, self.TAS = alpha, beta, TAS
-
-        # Setting velocities & dynamic pressure
-        self.CAS = tas2cas(self.TAS, environment.p, environment.rho)
-        self.EAS = tas2eas(self.TAS, environment.rho)
-        self.Mach = self.TAS / environment.a
-        self.q_inf = 0.5 * environment.rho * self.TAS ** 2
-
+    @abstractmethod
+    def get_controls(self, t, controls_sequence):
+        raise NotImplementedError
 
     @abstractmethod
     def calculate_forces_and_moments(self, state, environment, controls):
-
-        self._set_current_controls(controls)
-        self._calculate_aerodynamics(state, environment)
-
+        raise NotImplementedError
 
     def calculate_derivatives(self, state, environment, controls, eps=1e-3):
         """
@@ -190,3 +119,39 @@ class Aircraft(object):
                     derivatives[Mnames[j] + k] = (moments_p[j] - moments_m[j]) / eps
 
         return derivatives
+
+class ConventionalControls:
+    def __init__(self, controls_vec=np.array([])):
+        self.info = 'controls.vec=[delta_elevator, delta_aileron,delta_rudder,delta_throttle]'
+        if controls_vec.size == 0:
+            raise IOError(self.info)
+        assert controls_vec.size == 4
+        self.vec = controls_vec
+
+    @property
+    def delta_elevator(self):
+        return self.vec[0]
+    @delta_elevator.setter
+    def delta_elevator(self, value):
+        self.vec[0] = value
+
+    @property
+    def delta_aileron(self):
+        return self.vec[1]
+    @delta_aileron.setter
+    def delta_aileron(self, value):
+        self.vec[1] = value
+
+    @property
+    def delta_rudder(self):
+        return self.vec[2]
+    @delta_rudder.setter
+    def delta_rudder(self, value):
+        self.vec[2] = value
+
+    @property
+    def delta_throttle(self):
+        return self.vec[3]
+    @delta_throttle.setter
+    def delta_throttle(self, value):
+        self.vec[3] = value
