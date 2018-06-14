@@ -77,16 +77,16 @@ from abc import abstractmethod
 
 import numpy as np
 
-from pyfme.utils.anemometry import tas2cas, tas2eas, calculate_alpha_beta_TAS
+from pyfme_legacy.utils.anemometry import tas2cas, tas2eas, calculate_alpha_beta_TAS
 
 import numpy as np
 import pdb
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import linregress
 
-from pyfme.aircrafts.aircraft import Aircraft
-from pyfme.models.constants import slugft2_2_kgm2, lbs2kg
-from pyfme.utils.coordinates import wind2body, body2wind
+from pyfme_legacy.aircrafts.aircraft import Aircraft
+from pyfme_legacy.models.constants import slugft2_2_kgm2, lbs2kg
+from pyfme_legacy.utils.coordinates import wind2body, body2wind
 from copy import deepcopy as cp
 
 

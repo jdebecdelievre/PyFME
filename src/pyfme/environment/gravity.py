@@ -7,40 +7,12 @@ Gravity Models
 --------------
 
 """
-from abc import abstractmethod
-
 import numpy as np
 
 from pyfme.models.constants import GRAVITY, STD_GRAVITATIONAL_PARAMETER
 from pyfme.utils.coordinates import hor2body
 
-
-class Gravity(object):
-    """Generic gravity model"""
-
-    def __init__(self):
-        self._magnitude = None
-        self._versor = np.zeros([3])  # Body axis
-        self._vector = np.zeros([3])  # Body axis
-
-    @property
-    def magnitude(self):
-        return self._magnitude
-
-    @property
-    def versor(self):
-        return self._versor
-
-    @property
-    def vector(self):
-        return self._vector
-
-    @abstractmethod
-    def update(self, system):
-        pass
-
-
-class VerticalConstant(Gravity):
+class VerticalConstant(object):
     """Vertical constant gravity model.
     """
 
@@ -48,17 +20,14 @@ class VerticalConstant(Gravity):
         self._magnitude = GRAVITY
         self._z_horizon = np.array([0, 0, 1], dtype=float)
 
-    def update(self, state):
-        self._versor = hor2body(self._z_horizon,
-                                theta=state.theta,
-                                phi=state.phi,
-                                psi=state.psi
-                                )
-
-        self._vector = self.magnitude * self.versor
+    def vector(self, state):
+        _versor = np.array([- np.sin(state.theta),
+                            np.sin(state.phi)*np.cos(state.theta),
+                            np.cos(state.phi)*np.cos(state.theta)]).T
+        return self._magnitude * _versor
 
 
-class VerticalNewton(Gravity):
+class VerticalNewton(object):
     """Vertical gravity model with magnitude varying according to Newton's
     universal law of gravitation.
     """
@@ -66,24 +35,26 @@ class VerticalNewton(Gravity):
     def __init__(self):
         self._z_horizon = np.array([0, 0, 1], dtype=float)
 
-    def update(self, state):
+    def vector(self, state):
         r_squared = (state.coord_geocentric @
                      state.coord_geocentric)
-        self._magnitude = STD_GRAVITATIONAL_PARAMETER / r_squared
-        self._versor = hor2body(self._z_horizon,
-                                theta=state.theta,
-                                phi=state.phi,
-                                psi=state.psi
-                                )
-        self._vector = self.magnitude * self._vector
+        _magnitude = STD_GRAVITATIONAL_PARAMETER / r_squared
+        # _versor = hor2body(self._z_horizon,
+        #                    theta=state.theta,
+        #                    phi=state.phi,
+        #                    psi=state.psi)
+        _versor = np.array([- np.sin(state.theta),
+                            np.sin(state.phi)*np.cos(state.theta),
+                            np.cos(state.phi)*np.cos(state.theta)]).T
+        return _magnitude * _versor
 
 
-class LatitudeModel(Gravity):
+class LatitudeModel(object):
     # TODO: https://en.wikipedia.org/wiki/Gravity_of_Earth#Latitude_model
 
     def __init__(self):
         super().__init__()
         raise NotImplementedError
 
-    def update(self, system):
+    def vector(self, system):
         raise NotImplementedError

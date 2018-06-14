@@ -20,7 +20,6 @@ from scipy.integrate import solve_ivp
 from json import dump, load
 import pandas as pd
 
-
 class AircraftDynamicSystem:
     def __init__(self, aircraft, environment):
         """Aircraft Dynamic system initialization.
@@ -102,14 +101,15 @@ class AircraftDynamicSystem:
         t_eval = np.arange(t_ini, t_end, dt_eval)
 
         # define function to integrate
-        fun = lambda t, x: self._system_equations(t, x, controls_sequence)
+        def _fun(t, x):
+            return self._system_equations(t, x, controls_sequence)
 
         # get vector state if needed
         if not isinstance(x0, np.ndarray):
             x0 = np.copy(x0.vec)
 
         # solve
-        sol = solve_ivp(fun, t_span, x0, method=method, t_eval=t_eval,
+        sol = solve_ivp(_fun, t_span, x0, method=method, t_eval=t_eval,
                         dense_output=dense_output, vectorized=False,
                         **options)
         if sol.status != 0:
@@ -121,137 +121,148 @@ class AircraftDynamicSystem:
     def trim(self):
         raise NotImplementedError
 
+
 class BodyAxisState:
     def __init__(self, state_vec=-np.ones(12), from_json=None):
-        self.info = ["x_earth","y_earth","z_earth", "phi","theta","psi", "u","v","w", "p","q","r"]
-        assert (state_vec.size == 12 or state_vec.size == 0)
+        self.info = ["x_earth","y_earth","z_earth", "phi", "theta", "psi", "u", "v", "w", "p", "q", "r"]
+        # transpose if the state is [n,m], we want it [m,n] so that state_vec[1] is one state example
+        if state_vec.ndim > 1:
+            if state_vec.shape[1] != 12:
+                state_vec = state_vec.T
+        else:
+            state_vec = np.expand_dims(state_vec, axis=0)
         self.vec = state_vec
         if from_json != None:
             self.load_from_json(from_json)
 
     @property
     def V(self):
-        return np.linalg.norm(self.body_vel)
+        return np.linalg.norm(self.body_vel, axis=1)
+
+    @property
+    def N(self):
+        # number of time steps are stored in this state object (for vectorization)
+        return self.vec.shape[0]
 
     # Bunch of names for earth coordinates
     @property
     def earth_coordinates(self):
-        return self.vec[:3]
+        return self.vec.T[:3]
     @earth_coordinates.setter
     def earth_coordinates(self, value):
-        self.vec[:3] = value
+        self.vec.T[:3] = value
 
     @property
     def x_earth(self):
-        return self.vec[0]
+        return self.vec.T[0]
     @x_earth.setter
     def x_earth(self, value):
-        self.vec[0] = value
+        self.vec.T[0] = value
 
     @property
     def y_earth(self):
-        return self.vec[1]
+        return self.vec.T[1]
     @y_earth.setter
     def y_earth(self, value):
-        self.vec[1] = value
+        self.vec.T[1] = value
 
     @property
     def z_earth(self):
-        return self.vec[2]
+        return self.vec.T[2]
     @z_earth.setter
     def z_earth(self, value):
-        self.vec[2] = value
+        self.vec.T[2] = value
 
     @property
     def height(self):
-        return -self.vec[2]
+        return -self.vec.T[2]
 
     # Bunch of names for earth coordinates
     @property
     def euler_angles(self):
-        return self.vec[3:6]
+        return self.vec.T[3:6]
     @euler_angles.setter
     def euler_angles(self, value):
-        self.vec[3:6] = value
+        self.vec.T[3:6] = value
 
     @property
     def phi(self):
-        return self.vec[3]
+        return self.vec.T[3]
     @phi.setter
     def phi(self, value):
-        self.vec[3] = value
+        self.vec.T[3] = value
 
     @property
     def theta(self):
-        return self.vec[4]
+        return self.vec.T[4]
     @theta.setter
     def theta(self, value):
-        self.vec[4] = value
+        self.vec.T[4] = value
 
     @property
     def psi(self):
-        return self.vec[5]
+        return self.vec.T[5]
     @psi.setter
     def psi(self, value):
-        self.vec[5] = value
+        self.vec.T[5] = value
 
     # Bunch of names for body_velocity
     @property
     def body_vel(self):
-        return self.vec[6:9]
+        return self.vec.T[6:9]
     @body_vel.setter
     def body_vel(self, value):
-        self.vec[6:9] = value
+        self.vec.T[6:9] = value
 
     @property
     def u(self):
-        return self.vec[6]
+        return self.vec.T[6]
     @u.setter
     def u(self, value):
-        self.vec[6] = value
+        self.vec.T[6] = value
 
     @property
     def v(self):
-        return self.vec[7]
+        return self.vec.T[7]
     @v.setter
     def v(self, value):
-        self.vec[7] = value
+        self.vec.T[7] = value
 
     @property
     def w(self):
-        return self.vec[8]
+        return self.vec.T[8]
     @w.setter
     def w(self, value):
-        self.vec[8] = value
+        self.vec.T[8] = value
 
     # Bunch of names for angular_velociy
     @property
     def euler_ang_rate(self):
-        return self.vec[9:12]
+        return self.vec.T[9:12]
     @euler_ang_rate.setter
     def euler_ang_rate(self, value):
-        self.vec[9:12] = value
+        self.vec.T[9:12] = value
 
     @property
     def p(self):
-        return self.vec[9]
+        return self.vec.T[9]
     @p.setter
     def p(self, value):
-        self.vec[9] = value
+        self.vec.T[9] = value
 
     @property
     def q(self):
-        return self.vec[10]
+        return self.vec.T[10]
     @q.setter
     def q(self, value):
-        self.vec[10] = value
+        self.vec.T[10] = value
 
     @property
     def r(self):
-        return self.vec[11]
+        return self.vec.T[11]
     @r.setter
     def r(self, value):
-        self.vec[11] = value
+        self.vec.T[11] = value
 
     def __repr__(self):
         rv = (

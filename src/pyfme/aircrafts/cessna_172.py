@@ -83,6 +83,7 @@ from pyfme.models.constants import slugft2_2_kgm2, lbs2kg
 from pyfme.utils.coordinates import wind2body, body2wind
 from copy import deepcopy as cp
 from collections import namedtuple
+from pyfme.environment import Conditions
 
 class Cessna172(Aircraft):
     """
@@ -178,7 +179,9 @@ class Cessna172(Aircraft):
                                'delta_throttle': (0, 1)}  # non-dimensional
 
     def get_controls(self, t, controls_sequence):
-        c = ConventionalControls(np.zeros(4))
+        sz = 4 if (type(t) == float or type(t) == np.float64 or len(t) == 1) \
+            else (len(t), 4)
+        c = ConventionalControls(np.zeros(sz))
         for c_name, c_fun in controls_sequence.items():
             if hasattr(c, c_name):
                 setattr(c, c_name, c_fun(t))
@@ -191,7 +194,6 @@ class Cessna172(Aircraft):
         alpha_DEG = np.rad2deg(alpha)  # deg
         c = self.chord  # m
         p, q, r = state.euler_ang_rate  # rad/s
-
         CD_alpha_interp = np.interp(alpha_DEG, self.alpha_data, self.CD_data)
         CD_delta_elev_interp_ = RectBivariateSpline(self.delta_elev_data,
                                                     self.alpha_data,
@@ -272,10 +274,10 @@ class Cessna172(Aircraft):
         return CY, Cl, CN
 
     def _calculate_aero_forces_moments(self, conditions, state, controls):
-        q_inf = conditions['q_inf']
-        V = conditions['TAS']
-        alpha = conditions['alpha']
-        beta = conditions['beta']
+        q_inf = conditions.q_inf
+        V = conditions.TAS
+        alpha = conditions.alpha
+        beta = conditions.beta
 
         Sw = self.Sw
         c = self.chord
@@ -293,9 +295,9 @@ class Cessna172(Aircraft):
 
         return L, D, Y, l, m, n
 
-    def _calculate_thrust_forces_moments(self, TAS, environment, controls):
+    def _calculate_thrust_forces_moments(self, TAS, conditions, controls):
         delta_t = controls.delta_throttle
-        rho = environment.rho
+        rho = controls.rho
         prop_rad = self.propeller_radius
 
         # In this model the throttle controls the revolutions of the propeller
@@ -315,26 +317,22 @@ class Cessna172(Aircraft):
 
         return Ft
 
-    def calculate_forces_and_moments(self, state, environment, controls):
-        # Estimate aerodynamic conditions
-        conditions = self.calculate_aero_conditions(state, environment)
-        TAS = conditions['TAS']
-        alpha = conditions['alpha']
-        beta = conditions['beta']
+    def _calculate_forces_and_moments(self, state, conditions, controls):
+        TAS = conditions.TAS
+        alpha = conditions.alpha
+        beta = conditions.beta
 
-        Ft = self._calculate_thrust_forces_moments(TAS, environment, controls)
+        Ft = self._calculate_thrust_forces_moments(TAS, conditions, controls)
         L, D, Y, l, m, n = self._calculate_aero_forces_moments(conditions, state, controls)
-        Fg = environment.gravity_vector * self.mass
+        Fg = conditions.gravity_vector * self.mass
 
         Fa_wind = np.array([-D, Y, -L])
         Fa_body = wind2body(Fa_wind, alpha, beta)
         Fa = Fa_body
-
+        # print(Fa.shape, Fg.shape, Ft.shape)
         total_forces = Ft + Fg + Fa
         total_moments = np.array([l, m, n])
-        print(total_moments)
         return total_forces, total_moments
-
 
     def calculate_derivatives(self, state, environment, controls, eps=1e-3):
         """
@@ -389,6 +387,18 @@ class Cessna172(Aircraft):
 
         return derivatives
 
+    def calculate_forces_and_moments(self, state, conditions, controls):
+        # vectorize the dirty way (just for testing)
+        total_forces = np.zeros((state.N, 3))
+        total_moments = np.zeros((state.N, 3))
+        one_state = cp(state)
+        one_control = cp(controls)
+        for i in range(state.N):
+            one_state.vec = state.vec[i]
+            one_control.vec = controls.vec[i]
+            one_cond = Conditions(*[conditions[ii][i] for ii in range(len(conditions))])
+            total_forces[i, :], total_moments[i, :] = self._calculate_forces_and_moments(one_state, one_cond, one_control)
+        return total_forces, total_moments
 
 class SimplifiedCessna172(Cessna172):
     def __init__(self):
@@ -437,6 +447,7 @@ class SimplifiedCessna172(Cessna172):
         self.RPM_idle = 1000
         self.Ct_J2, self.Ct_J, self.Ct_0 = np.polyfit(self.J_data, self.Ct_data, 2)
 
+
     def _calculate_aero_lon_forces_moments_coeffs(self, alpha, V, state, controls):
         """
         Simplified dynamics for the Cessna 172: strictly linear dynamics.
@@ -456,7 +467,6 @@ class SimplifiedCessna172(Cessna172):
         alpha_RAD = alpha # rad
         c = self.chord  # m
         p, q, r = state.euler_ang_rate  # rad/s
-
         CL = (
             self.CL_0 +
             self.CL_alpha*alpha_RAD +
@@ -514,9 +524,9 @@ class SimplifiedCessna172(Cessna172):
         )
         return CY, Cl, CN
 
-    def _calculate_thrust_forces_moments(self, TAS, environment, controls):
+    def _calculate_thrust_forces_moments(self, TAS, conditions, controls):
         delta_t = controls.delta_throttle
-        rho = environment.rho
+        rho = conditions.rho
         prop_rad = self.propeller_radius
 
         # In this model the throttle controls the revolutions of the propeller

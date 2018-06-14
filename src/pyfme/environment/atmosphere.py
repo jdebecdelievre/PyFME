@@ -11,90 +11,12 @@ Atmosphere
 
 from math import exp, sqrt
 from abc import abstractmethod
-
+import numpy as np
 from pyfme.models.constants import GAMMA_AIR, R_AIR, GRAVITY
 from pyfme.utils.altimetry import geometric2geopotential
+from numpy import vectorize
 
-
-class Atmosphere(object):
-
-    def __init__(self):
-
-        self._geopotential_alt = None  # Current geopotential height (m).
-        self._pressure_altitude = None  # Current pressure altitude (m).
-        self._T = None  # Temperature (K).
-        self._p = None  # Pressure (atm).
-        self._rho = None  # Density (kg/m³).
-        self._a = None  # Speed of sound (m/s).
-
-    def update(self, state):
-        """Update atmosphere state for the given system state.
-
-        Parameters
-        ----------
-        state : System object
-            System object with attribute alt_geop (geopotential
-            altitude.
-
-        Returns
-        -------
-        T : float
-            Temperature (K).
-        p : float
-            Pressure (Pa).
-        rho : float
-            Density (kg/m³)
-        a : float
-            Sound speed at flight level (m/s)
-
-        Raises
-        ------
-        ValueError
-            If the value of the altitude is outside the defined layers.
-
-        Notes
-        -----
-        Check layers and reference values in [2].
-
-        References
-        ----------
-        .. [1] U.S. Standard Atmosphere, 1976, U.S. Government Printing Office,
-            Washington, D.C., 1976
-        .. [2] https://en.wikipedia.org/wiki/U.S._Standard_Atmosphere
-
-        """
-        # Geopotential altitude
-        self._geopotential_alt = geometric2geopotential(state.height)
-
-        T, p, rho, a = self.__call__(self._geopotential_alt)
-
-        self._T = T
-        self._p = p
-        self._rho = rho
-        self._a = a
-
-    @property
-    def T(self):
-        return self._T
-
-    @property
-    def p(self):
-        return self._p
-
-    @property
-    def rho(self):
-        return self._rho
-
-    @property
-    def a(self):
-        return self._a
-
-    @abstractmethod
-    def __call__(self, h):
-        pass
-
-
-class ISA1976(Atmosphere):
+class ISA1976(object):
     """
     International Standard Atmosphere 1976
     --------------------------------------
@@ -121,7 +43,6 @@ class ISA1976(Atmosphere):
     """
 
     def __init__(self):
-        super().__init__()
         self._gamma = GAMMA_AIR  # Adiabatic index or ratio of specific heats
         self._R_g = R_AIR  # Gas constant  J/(Kg·K)
         self._g0 = GRAVITY  # Gravity  m/s^2
@@ -134,19 +55,12 @@ class ISA1976(Atmosphere):
         self._alpha_layers = (-0.0065, 0, 0.001, 0.0028, 0, -0.0028,
                               -0.002)  # K / m
 
-        # Initialize at h=0
-        self.h = 0  # Current height (m).
-        self._T = self._T0_layers[0]  # Temperature (K).
-        self._p = self._p0_layers[0]  # Pressure (atm).
-        self._rho = self.p / (self._R_g * self.T)
-        self._a = sqrt(self._gamma * self._R_g * self.T)
-
-    def __call__(self, h):
+    def variables(self, state):
         """ISA 1976 Standard atmosphere temperature, pressure and density.
 
         Parameters
         ----------
-        h : float
+        state.height : float
             Geopotential altitude (m). h values must range from 0 to 84500 m.
 
         Returns
@@ -181,9 +95,13 @@ class ISA1976(Atmosphere):
         .. [2] https://en.wikipedia.org/wiki/U.S._Standard_Atmosphere
 
         """
+        h = state.height
         g0 = self._g0
         R_a = self._R_g
         gamma = self._gamma
+
+        if state.vec.ndim > 1:
+            raise(NotImplementedError('Vectorization not implemented for this atmospheric model'))
 
         if h < 0.0:
             raise ValueError("Altitude cannot be less than 0 m.")
@@ -261,6 +179,11 @@ class ISA1976(Atmosphere):
 
 
 class SeaLevel(ISA1976):
-    def __call__(self, h):
-        return super().__call__(h=0.01)
+    def variables(self, state):
+        # return h=0 value
+        T = self._T0_layers[0]
+        P = self._p0_layers[0]
+        rho = P / (self._R_g * T)
+        a = sqrt(self._gamma * self._R_g * T)
+        return np.array([[T,P,rho,a]]).T*np.ones((1,state.N))
 

@@ -10,9 +10,9 @@ Generic Aircraft
 from abc import abstractmethod
 
 import numpy as np
-
-from pyfme.utils.anemometry import tas2cas, tas2eas, calculate_alpha_beta_TAS
+import pdb
 from pyfme.utils.coordinates import body2wind, wind2body
+from copy import deepcopy as cp
 
 class Aircraft(object):
 
@@ -41,30 +41,12 @@ class Aircraft(object):
     def Izz(self):
         return self.inertia[2, 2]
 
-    def calculate_aero_conditions(self, state, environment):
-
-        # Velocity relative to air: aerodynamic velocity.
-        aero_vel = state.body_vel - environment.body_wind
-
-        conditions = {}
-        conditions['alpha'], conditions['beta'], TAS = calculate_alpha_beta_TAS(
-            u=aero_vel[0], v=aero_vel[1], w=aero_vel[2]
-        )
-        conditions['TAS'] = TAS
-
-        # Setting velocities & dynamic pressure
-        conditions['CAS'] = tas2cas(TAS, environment.p, environment.rho)
-        conditions['EAS'] = tas2eas(TAS, environment.rho)
-        conditions['Mach'] = TAS / environment.a
-        conditions['q_inf'] = 0.5 * environment.rho * TAS ** 2
-        return conditions
-
     @abstractmethod
     def get_controls(self, t, controls_sequence):
         raise NotImplementedError
 
     @abstractmethod
-    def calculate_forces_and_moments(self, state, environment, controls):
+    def calculate_forces_and_moments(self, state, conditions, controls):
         raise NotImplementedError
 
     def calculate_derivatives(self, state, environment, controls, eps=1e-3):
@@ -120,38 +102,62 @@ class Aircraft(object):
 
         return derivatives
 
+
 class ConventionalControls:
     def __init__(self, controls_vec=-np.ones(4)):
         self.info = 'controls.vec=[delta_elevator, delta_aileron,delta_rudder,delta_throttle]'
         if controls_vec.size == 0:
             raise IOError(self.info)
-        assert controls_vec.size == 4
+        # transpose if the controls are [n,m], we want it [m,n] so that controls.vec[1] is one contr example
+        if controls_vec.ndim > 1:
+            if controls_vec.shape[1] != 4:
+                controls_vec = controls_vec.T
+        else:
+            controls_vec = np.expand_dims(controls_vec, axis=0)
         self.vec = controls_vec
+
+    def __repr__(self):
+        rv = (
+            "Conventional Controls \n"
+            f"delta_elevator: {self.delta_elevator} \n"
+            f"delta_aileron: {self.delta_aileron} \n"
+            f"delta_rudder: {self.delta_rudder} \n"
+            f"delta_throttle: {self.delta_throttle} \n"
+        )
+        return rv
+
+    @property
+    def N(self):
+        # number of time steps are stored in this state object (for vectorization)
+        if self.vec.ndim >1:
+            return self.vec.shape[1]
+        else:
+            return 1
 
     @property
     def delta_elevator(self):
-        return self.vec[0]
+        return self.vec.T[0]
     @delta_elevator.setter
     def delta_elevator(self, value):
-        self.vec[0] = value
+        self.vec.T[0] = value
 
     @property
     def delta_aileron(self):
-        return self.vec[1]
+        return self.vec.T[1]
     @delta_aileron.setter
     def delta_aileron(self, value):
-        self.vec[1] = value
+        self.vec.T[1] = value
 
     @property
     def delta_rudder(self):
-        return self.vec[2]
+        return self.vec.T[2]
     @delta_rudder.setter
     def delta_rudder(self, value):
-        self.vec[2] = value
+        self.vec.T[2] = value
 
     @property
     def delta_throttle(self):
-        return self.vec[3]
+        return self.vec.T[3]
     @delta_throttle.setter
     def delta_throttle(self, value):
-        self.vec[3] = value
+        self.vec.T[3] = value

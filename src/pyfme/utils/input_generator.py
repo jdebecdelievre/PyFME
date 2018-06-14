@@ -12,6 +12,7 @@ from abc import abstractmethod
 
 from numpy import vectorize, float64
 from numpy import sin, pi
+import numpy as np
 
 
 def vectorize_float(method):
@@ -32,16 +33,7 @@ class Control(object):
 
     def __call__(self, t):
         r = self._fun(t)
-        # NumPy vecotrize returns an numpy.ndarray object with size 1 and no
-        # shape if the input is scalar, however in this case, a float is
-        # expected.
-        # TODO:
-        # Numba vectorize does return a scalar, however it does not deal
-        # with function methods.
-        if r.size == 1:
-            return float(r)
-        else:
-            return r
+        return np.squeeze(r)
 
     def __add__(self, other):
         control = Control()
@@ -67,9 +59,8 @@ class Constant(Control):
     def __init__(self, offset=0):
         self.offset = offset
 
-    @vectorize_float
     def _fun(self, t):
-        return self.offset
+        return np.ones_like(t)*self.offset
 
 
 class Step(Control):
@@ -82,11 +73,9 @@ class Step(Control):
 
         self.t_fin = self.t_init + self.T
 
-    @vectorize_float
     def _fun(self, t):
         value = self.offset
-        if self.t_init <= t <= self.t_fin:
-            value += self.A
+        value = value + self.A*((self.t_init <= t) * (t <= self.t_fin))
         return value
 
 
@@ -101,14 +90,9 @@ class Doublet(Control):
         self.t_fin1 = self.t_init + self.T / 2
         self.t_fin2 = self.t_init + self.T
 
-    @vectorize_float
     def _fun(self, t):
-        value = self.offset
-
-        if self.t_init <= t < self.t_fin1:
-            value += self.A / 2
-        elif self.t_fin1 < t <= self.t_fin2:
-            value -= self.A / 2
+        value = self.offset + self.A / 2*((self.t_init <= t) * (t < self.t_fin1))\
+                - self.A / 2*((self.t_fin1 < t) * (t <= self.t_fin2))
         return value
 
 
@@ -123,18 +107,15 @@ class Ramp(Control):
         self.slope = self.A / self.T
         self.t_fin = self.t_init + self.T
 
-    @vectorize_float
     def _fun(self, t):
-        value = self.offset
-        if self.t_init <= t <= self.t_fin:
-            value += self.slope * (t - self.t_init)
-
+        value = self.offset + self.slope * (t - self.t_init) * \
+                              ((self.t_init <= t) * (t <= self.t_fin))
         return value
 
 
 class Harmonic(Control):
 
-    def __init__(self, t_init, T, A, freq, phase, offset=0):
+    def __init__(self, t_init, T, A, freq, phase=0, offset=0):
         super().__init__()
         self.t_init = t_init
         self.t_fin = t_init + T
@@ -143,12 +124,7 @@ class Harmonic(Control):
         self.phase = phase
         self.offset = offset
 
-    @vectorize_float
     def _fun(self, t):
-        value = self.offset
-
-        if self.t_init <= t <= self.t_fin:
-            value += self.A/2 * sin(2 * pi * self.freq * (t - self.t_init) +
-                                    self.phase)
-
+        value = self.offset + (self.A/2 * sin(2 * pi * self.freq * (t - self.t_init) +
+                                    self.phase)) * ((self.t_init <= t) * (t <= self.t_fin))
         return value

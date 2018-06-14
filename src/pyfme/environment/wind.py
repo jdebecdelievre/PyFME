@@ -12,11 +12,16 @@ import numpy as np
 
 class NoWind(object):
 
-    def __init__(self):
+    def horizon(self, state):
         # Wind velocity: FROM North to South, FROM East to West,
-        # Wind velocity in the UPSIDE direction
-        self.horizon = np.zeros([3], dtype=float)
-        self.body = np.zeros([3], dtype=float)
+        if state.N > 1:
+            return np.zeros((3, state.N), dtype=float)
+        else:
+            return np.zeros(3, dtype=float)
 
-    def update(self, state):
-        pass
+    def body(self, state):
+        # Wind velocity in the UPSIDE direction
+        if state.N > 1:
+            return np.zeros((3, state.N), dtype=float)
+        else:
+            return np.zeros(3, dtype=float)

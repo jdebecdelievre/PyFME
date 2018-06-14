@@ -3,7 +3,12 @@ Python Flight Mechanics Engine (PyFME).
 Copyright (c) AeroPython Development Team.
 Distributed under the terms of the MIT License.
 """
-
+from pyfme.utils.anemometry import tas2eas, tas2cas, calculate_alpha_beta_TAS
+from collections import namedtuple
+# Conditions class
+Conditions = namedtuple('conditions', ['TAS','CAS','Mach','q_inf',
+                                       'rho','T','P','a','alpha',
+                                       'beta','gravity_vector'])
 
 class Environment(object):
     """
@@ -24,40 +29,37 @@ class Environment(object):
         self.atmosphere = atmosphere
         self.gravity = gravity
         self.wind = wind
-    
-    @property
-    def T(self):
-        return self.atmosphere.T
 
-    @property
-    def p(self):
-        return self.atmosphere.p
+    def gravity_magnitude(self, state):
+        return self.gravity.magnitude(state)
 
-    @property
-    def rho(self):
-        return self.atmosphere.rho
+    def gravity_vector(self, state):
+        return self.gravity.vector(state)
 
-    @property
-    def a(self):
-        return self.atmosphere.a
+    def horizon_wind(self, state):
+        return self.wind.horizon(state)
 
-    @property
-    def gravity_magnitude(self):
-        return self.gravity.magnitude
+    def body_wind(self, state):
+        return self.wind.body(state)
 
-    @property
-    def gravity_vector(self):
-        return self.gravity.vector
+    def calculate_aero_conditions(self, state):
 
-    @property
-    def body_wind(self):
-        return self.wind.body
+        # Getting conditions from environment
+        body_wind = self.body_wind(state)
+        rho, T, P, a = self.atmosphere.variables(state)
 
-    @property
-    def horizon_wind(self):
-        return self.wind.horizon
+        # Velocity relative to air: aerodynamic velocity.
+        aero_vel = state.body_vel - body_wind
+        alpha, beta, TAS = calculate_alpha_beta_TAS(
+            u=aero_vel[0], v=aero_vel[1], w=aero_vel[2]
+        )
 
-    def update(self, state):
-        self.atmosphere.update(state)
-        self.gravity.update(state)
-        self.wind.update(state)
+        # Setting velocities & dynamic pressure
+        CAS = tas2cas(TAS, P, rho)
+        EAS = tas2eas(TAS, rho)
+        Mach = TAS / a
+        q_inf = 0.5 * rho * TAS ** 2
+
+        # gravity vector
+        gravity_vector = self.gravity_vector(state)
+        return Conditions(TAS, CAS, Mach, q_inf, rho, T, P, a, alpha, beta, gravity_vector)
