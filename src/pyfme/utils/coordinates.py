@@ -326,10 +326,10 @@ def check_alpha_beta_range(alpha, beta):
     alpha_min, alpha_max = (-np.pi/2, np.pi/2)
     beta_min, beta_max = (-np.pi, np.pi)
 
-    if not (alpha_min <= alpha <= alpha_max):
-        raise AlphaBetaRangeError(f'Alpha value is not inside correct range: {alpha*180/np.pi} deg')
-    elif not (beta_min <= beta <= beta_max):
-        raise AlphaBetaRangeError(f'Beta value is not inside correct range: {beta*180/np.pi} deg')
+    # if not (alpha_min <= alpha <= alpha_max):
+    #     raise AlphaBetaRangeError(f'Alpha value is not inside correct range: {alpha*180/np.pi} deg')
+    # elif not (beta_min <= beta <= beta_max):
+    #     raise AlphaBetaRangeError(f'Beta value is not inside correct range: {beta*180/np.pi} deg')
 
 
 def body2wind(body_coords, alpha, beta):

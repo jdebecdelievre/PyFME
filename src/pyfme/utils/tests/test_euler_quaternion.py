@@ -28,7 +28,7 @@ def test_quatern2euler():
 
 def test_euler2quatern():
 
-    euler_angles = np.array([0.0, 1.0471975511965976, 0.0])
+    euler_angles = np.array([1.0471975511965976, 0.0, 0.0])
 
     quaternion_expected = np.array([0.8660254037844387, 0.5, 0, 0])
 

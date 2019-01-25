@@ -11,19 +11,17 @@ import numpy as np
 
 from pyfme.models.constants import GRAVITY, STD_GRAVITATIONAL_PARAMETER
 from pyfme.utils.coordinates import hor2body
+from pyfme.utils.change_euler_quaternion import rotate_vector
 
 class VerticalConstant(object):
     """Vertical constant gravity model.
     """
 
-    def __init__(self):
-        self._magnitude = GRAVITY
-        self._z_horizon = np.array([0, 0, 1], dtype=float)
+    def __init__(self, magnitude=GRAVITY):
+        self._magnitude = magnitude
 
     def vector(self, state):
-        _versor = np.array([- np.sin(state.theta),
-                            np.sin(state.phi)*np.cos(state.theta),
-                            np.cos(state.phi)*np.cos(state.theta)]).T
+        _versor = grav_versor(state)
         return self._magnitude * _versor
 
 
@@ -33,19 +31,13 @@ class VerticalNewton(object):
     """
 
     def __init__(self):
-        self._z_horizon = np.array([0, 0, 1], dtype=float)
+        pass
 
     def vector(self, state):
         r_squared = (state.coord_geocentric @
                      state.coord_geocentric)
         _magnitude = STD_GRAVITATIONAL_PARAMETER / r_squared
-        # _versor = hor2body(self._z_horizon,
-        #                    theta=state.theta,
-        #                    phi=state.phi,
-        #                    psi=state.psi)
-        _versor = np.array([- np.sin(state.theta),
-                            np.sin(state.phi)*np.cos(state.theta),
-                            np.cos(state.phi)*np.cos(state.theta)]).T
+        _versor = grav_versor(state)
         return _magnitude * _versor
 
 
@@ -58,3 +50,12 @@ class LatitudeModel(object):
 
     def vector(self, system):
         raise NotImplementedError
+
+def grav_versor(state):
+    if hasattr(state, 'quaternion'):
+        _versor = rotate_vector(np.array([[0,0,1]]*state.N), state.quaternion)
+    else:
+        _versor = np.array([- np.sin(state.theta),
+                            np.sin(state.phi)*np.cos(state.theta),
+                            np.cos(state.phi)*np.cos(state.theta)]).T
+    return _versor    

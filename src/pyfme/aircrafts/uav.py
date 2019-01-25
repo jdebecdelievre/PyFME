@@ -137,9 +137,9 @@ class MeterSpanUAV(Aircraft):
     def calculate_aero_coeffs(self, state, controls):
         # Compute features
         V = nl.norm(state.velocity.vel_body)
-        p = state.angular_vel.p * self.span / (2*V)
-        q = state.angular_vel.q * self.chord / (2*V)
-        r = state.angular_vel.r * self.span / (2*V)
+        p = state.omega.p * self.span / (2*V)
+        q = state.omega.q * self.chord / (2*V)
+        r = state.omega.r * self.span / (2*V)
         alpha = np.arctan2(state.velocity.w, state.velocity.u)
         beta = np.arcsin(state.velocity.v, V)
 
@@ -189,7 +189,7 @@ class MeterSpanUAV(Aircraft):
 
         self.Fa_wind = Fa_wind
 
-        # return state.velocity._vel_body, state.angular_vel._vel_ang_body
+        # return state.velocity._vel_body, state.omega._vel_ang_body
         return self.total_forces, self.total_moments
 
 

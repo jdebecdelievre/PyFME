@@ -31,7 +31,8 @@ SOUND_VEL_0 = 340.293990543  # Sound speed at sea level (m/s)
 
 
 # EARTH CONSTANTS
-GRAVITY = 9.80665  # Gravity of Ethe Earth (m/s^2) - [1]
+# GRAVITY = 9.80665  # Gravity of Ethe Earth (m/s^2) - [1]
+GRAVITY = 9.81
 # Standard Gravitational Parameter
 # product of the gravitational constant G and the mass M of the body (m³/s²)
 STD_GRAVITATIONAL_PARAMETER = 3.986004418e14

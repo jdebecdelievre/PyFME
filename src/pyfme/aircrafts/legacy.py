@@ -331,7 +331,7 @@ class Cessna1720():
     def _calculate_aerodynamics(self, state, environment):
 
         # Velocity relative to air: aerodynamic velocity.
-        aero_vel = state.body_vel  - environment.body_wind
+        aero_vel = state.velocity  - environment.body_wind
 
         self.alpha, self.beta, self.TAS = calculate_alpha_beta_TAS(
             u=aero_vel[0], v=aero_vel[1], w=aero_vel[2]

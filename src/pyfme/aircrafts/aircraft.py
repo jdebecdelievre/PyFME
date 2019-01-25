@@ -13,6 +13,8 @@ import numpy as np
 import pdb
 from pyfme.utils.coordinates import body2wind, wind2body
 from copy import deepcopy as cp
+from pyfme.environment import Conditions
+
 
 class Aircraft(object):
 
@@ -45,9 +47,32 @@ class Aircraft(object):
     def get_controls(self, t, controls_sequence):
         raise NotImplementedError
 
-    @abstractmethod
     def calculate_forces_and_moments(self, state, conditions, controls):
-        raise NotImplementedError
+        # vectorize the dirty way (just for testing)
+        total_forces = np.zeros((state.N, 3))
+        total_moments = np.zeros((state.N, 3))
+        one_state = cp(state)
+        one_control = cp(controls)
+        for i in range(state.N):
+            one_state.vec = state.vec[i]
+            one_control.vec = controls.vec[i]
+            one_cond = Conditions(*[conditions[ii][i] for ii in range(len(conditions))])
+            total_forces[i, :], total_moments[i, :] = self._calculate_forces_and_moments(one_state, one_cond, one_control)
+        return total_forces, total_moments
+
+    def _calculate_forces_and_moments(self, state, conditions, controls):
+        TAS = conditions.TAS
+        alpha = conditions.alpha
+        beta = conditions.beta
+
+        Ft = self._calculate_thrust_forces_moments(TAS, conditions, controls)
+        L, D, Y, l, m, n = self._calculate_aero_forces_moments(conditions, state, controls)
+        Fa_wind = np.array([-D, Y, -L])
+        Fa_body = wind2body(Fa_wind, alpha, beta)
+        Fa = Fa_body
+        total_forces = Ft + Fa
+        total_moments = np.array([l, m, n])
+        return total_forces, total_moments
 
     def calculate_derivatives(self, state, environment, controls, eps=1e-3):
         """
@@ -58,7 +83,7 @@ class Aircraft(object):
         (u,v,w ; phi,theta,psi ; p,q,r ; x,y,z)
         """
         names = {'velocity': ['u', 'v', 'w'],
-                 'angular_vel': ['p', 'q', 'r'],
+                 'omega': ['p', 'q', 'r'],
                  'acceleration': ['w_dot']}
         Fnames = ['X', 'Y', 'Z']
         Mnames = ['L', 'M', 'N']
@@ -125,6 +150,17 @@ class ConventionalControls:
             f"delta_throttle: {self.delta_throttle} \n"
         )
         return rv
+
+    def evaluate_sequence(self, t, controls_sequence):
+        sz = (1,4) if (type(t) == float or type(t) == np.float64 or len(t) == 1) \
+            else (len(t), 4)
+        self.vec = np.zeros(sz)
+        for c_name, c_fun in controls_sequence.items():
+            if hasattr(self, c_name):
+                setattr(self, c_name, c_fun(t))
+            else:
+                raise AttributeError
+        return self
 
     @property
     def N(self):

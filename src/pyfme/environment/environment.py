@@ -10,12 +10,17 @@ Conditions = namedtuple('conditions', ['TAS','CAS','Mach','q_inf',
                                        'rho','T','P','a','alpha',
                                        'beta','gravity_vector'])
 
+from pyfme.environment.atmosphere import SeaLevel
+from pyfme.environment.wind import NoWind
+from pyfme.environment.gravity import VerticalConstant
+import numpy as np
+
 class Environment(object):
     """
     Stores all the environment info: atmosphere, gravity and wind.
     """
 
-    def __init__(self, atmosphere, gravity, wind):
+    def __init__(self, atmosphere=None, gravity=None, wind=None):
         """
         Parameters
         ----------
@@ -26,9 +31,9 @@ class Environment(object):
         wind : Wind
             Wind or gust model.
         """
-        self.atmosphere = atmosphere
-        self.gravity = gravity
-        self.wind = wind
+        self.atmosphere = atmosphere if atmosphere else SeaLevel()
+        self.gravity = gravity if gravity else VerticalConstant()
+        self.wind = wind if wind else NoWind()
 
     def gravity_magnitude(self, state):
         return self.gravity.magnitude(state)
@@ -46,19 +51,17 @@ class Environment(object):
 
         # Getting conditions from environment
         body_wind = self.body_wind(state)
-        rho, T, P, a = self.atmosphere.variables(state)
+        T, P, rho, a = self.atmosphere.variables(state)
 
         # Velocity relative to air: aerodynamic velocity.
-        aero_vel = state.body_vel - body_wind
-        alpha, beta, TAS = calculate_alpha_beta_TAS(
-            u=aero_vel[0], v=aero_vel[1], w=aero_vel[2]
-        )
+        aero_vel = (state.velocity - body_wind)
+        alpha, beta, TAS = calculate_alpha_beta_TAS(aero_vel)
 
         # Setting velocities & dynamic pressure
         CAS = tas2cas(TAS, P, rho)
         EAS = tas2eas(TAS, rho)
         Mach = TAS / a
-        q_inf = 0.5 * rho * TAS ** 2
+        q_inf = 0.5 * rho * np.square(TAS)
 
         # gravity vector
         gravity_vector = self.gravity_vector(state)

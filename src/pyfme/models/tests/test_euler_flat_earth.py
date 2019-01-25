@@ -5,23 +5,15 @@ Tests of equations of euler flat earth model.
 
 import pytest
 import numpy as np
-
-from pyfme.models.euler_flat_earth import _system_equations, EulerFlatEarth
-from pyfme.models.state import (EarthPosition, EulerAttitude, BodyVelocity,
-                                BodyAngularVelocity, BodyAcceleration,
-                                BodyAngularAcceleration, AircraftState)
+import os
 from pyfme.models.constants import EARTH_MEAN_RADIUS
-
-
-pos = EarthPosition(0, 0, 2000)
-att = EulerAttitude(5/180*np.pi, 15/180*np.pi, 45/180*np.pi)
-vel = BodyVelocity(50, 2, 3, att)
-ang_vel = BodyAngularVelocity(1/180*np.pi, 5/180*np.pi, 5/180*np.pi, att)
-accel = BodyAcceleration(0, 0, 0, att)
-ang_accel = BodyAngularAcceleration(0, 0, 0, att)
-
-full_state = AircraftState(pos, att, vel, ang_vel, accel, ang_accel)
-
+from pyfme.models import RigidBodyEulerState, RigidBodyQuatState
+from pyfme.models.state import copyStateValues
+from pyfme.models import RigidBodyEuler, RigidBodyQuat
+from pyfme.aircrafts.aircraft import Aircraft
+from pyfme.aircrafts import BasisLinear
+from pyfme.environment import Environment
+from pyfme.utils.input_generator import Constant
 
 def test_system_equations():
     time = 0
@@ -46,50 +38,82 @@ def test_system_equations():
          1 + (2 ** 0.5) / 2, 0, 1 - (2 ** 0.5) / 2],
         dtype=float
     )
+    sys = RigidBodyEuler(None, None)
     sol = _system_equations(time, state_vector, mass, inertia, forces, moments)
     np.testing.assert_allclose(sol, exp_sol, rtol=1e-7, atol=1e-15)
 
 
+def test_quat_vs_euler():
+  state = RigidBodyQuatState()
+  aircraft = Aircraft()
+  aircraft.mass = np.random.uniform(10,100)
+  aircraft.inertia = np.random.uniform(-100, 100, size=(3,3))
+  aircraft.inertia_inverse = np.linalg.inv(aircraft.inertia)
+  s1 = RigidBodyEuler(aircraft, Environment())
+  s2 = RigidBodyQuat(aircraft, Environment())
+  sol1 = RigidBodyEulerState()
+  sol2 = RigidBodyQuatState()
+  for n in range(1000):
+    state.velocity = np.random.uniform(-2,2, size=3)
+    state.omega = np.random.uniform(-2,2, size=3)
+    state.attitude = np.random.uniform(-2,2, size=3)
+    forces = np.random.uniform(-2,2, size=3)
+    moments = np.random.uniform(-2,2, size=3)
+    sol1.vec = s1._system_equations(state, forces, moments)
+    sol2.vec = s2._system_equations(state, forces, moments)
+    np.testing.assert_allclose(sol1.position, sol2.position ,rtol=1e-7, atol=1e-15)
+    np.testing.assert_allclose(sol1.velocity, sol2.velocity ,rtol=1e-7, atol=1e-15)    
+    np.testing.assert_allclose(sol1.omega, sol2.omega ,rtol=1e-7, atol=1e-15)    
+
+def test_quat_vs_euler_2():
+  aircraft = BasisLinear('example.json')
+  # higher gravity since it couples attitude equations with body axis ones
+  s1 = RigidBodyEuler(aircraft, Environment(gravity=VerticalConstant(100)))
+  s2 = RigidBodyQuat(aircraft, Environment(gravity=VerticalConstant(100)))
+  controls = {
+  'delta_elevator': Constant(0),
+  'delta_aileron': Constant(0),
+  'delta_rudder': Constant(0),
+  'delta_throttle': Constant(0)
+  }
+
+  n=0
+  while n < 10:
+      sol1 = RigidBodyEulerState()
+      sol2 = RigidBodyQuatState()
+      sol1.omega = np.random.uniform(-1,1, size=3)
+      sol1.attitude = np.random.uniform(-1,1, size=3)
+      sol1.position = np.array([0,0,0])
+      sol1.velocity = np.random.uniform(1,2, size=3)
+      sol2 = copyStateValues(sol1, sol2)
+      try:
+          with warnings.catch_warnings(record=True):
+              warnings.simplefilter("error")
+              sol1 = s1.integrate(1, sol1, controls, dt_eval=0.001)
+              sol2 = s2.integrate(1, sol2, controls, dt_eval=0.001)
+      except RuntimeWarning:
+          print('runtime warning')
+          continue
+      print(n)
+      n+=1
+      try:
+          np.testing.assert_allclose(sol1.position[:,-1], sol2.position[:,-1] ,rtol=1, atol=1, verbose=True)
+          np.testing.assert_allclose(sol1.velocity[:,-1], sol2.velocity[:,-1] ,rtol=1, atol=1, verbose=True)    
+          np.testing.assert_allclose(sol1.omega[:,-1], sol2.omega[:,-1] ,rtol=1, atol=1, verbose=True)   
+      except:
+          print('Assertion Error: discrepancy')
+          break  
+
 def test_fun_raises_error_if_no_update_simulation_is_defined():
-    system = EulerFlatEarth(t0=0, full_state=full_state)
+    system = RigidBodyEuler(t0=0, full_state=full_state)
     x = np.zeros_like(system.state_vector)
     with pytest.raises(TypeError):
         system.fun(t=0, x=x)
 
 
-def test_update_full_system_state_from_state():
-    system = EulerFlatEarth(t0=0, full_state=full_state)
-
-    x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], dtype=float)
-    x_dot = np.array([13, 14, 15, 16, 17, 18])
-
-    # Lat and lon after update in EarthFlatEarth are calculated from
-    # delta_x, and delta_y with Earth mean radius, so depends on the
-    # previous state.
-    # If this test broke after changing the way lat and lon are updated from
-    # Earth coordinates (ie. taking into account only the first point and
-    # current status) you are in the right place
-    dlat = (x[9] - system.full_state.position.x_earth) / EARTH_MEAN_RADIUS
-    dlon = (x[10] - system.full_state.position.y_earth) / EARTH_MEAN_RADIUS
-
-    system._update_full_system_state_from_state(x, x_dot)
-
-    exp_pos = EarthPosition(10, 11, -12, lat=dlat, lon=dlon)
-    exp_att = EulerAttitude(7, 8, 9)
-    exp_vel = BodyVelocity(1, 2, 3, exp_att)
-    exp_ang_vel = BodyAngularVelocity(4, 5, 6, exp_att)
-    exp_accel = BodyAcceleration(13, 14, 15, exp_att)
-    exp_ang_accel = BodyAngularAcceleration(16, 17, 18, exp_att)
-
-    exp_full_state = AircraftState(exp_pos, exp_att, exp_vel, exp_ang_vel,
-                                   exp_accel, exp_ang_accel)
-
-    np.testing.assert_allclose(system.full_state.value, exp_full_state.value)
-
-
 def test_get_state_vector_from_full_state():
 
-    system = EulerFlatEarth(0, full_state)
+    system = RigidBodyEuler(0, full_state)
 
     x = np.array([50, 2, 3,
                   1/180*np.pi, 5/180*np.pi, 5/180*np.pi,

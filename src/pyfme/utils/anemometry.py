@@ -26,14 +26,14 @@ position error.
 from numpy import arcsin, arctan2, sqrt
 from pyfme.models.constants import RHO_0, P_0, SOUND_VEL_0, GAMMA_AIR
 
-
+import numpy as np
 rho_0 = RHO_0  # density at sea level (kg/m3)
 p_0 = P_0  # pressure at sea level (Pa)
 a_0 = SOUND_VEL_0  # sound speed at sea level (m/s)
 gamma = GAMMA_AIR  # heat capacity ratio
 
 
-def calculate_alpha_beta_TAS(u, v, w):
+def calculate_alpha_beta_TAS(aero_vel):
     """
     Calculate the angle of attack (AOA), angle of sideslip (AOS) and true air
     speed from the **aerodynamic velocity** in body coordinates.
@@ -76,8 +76,8 @@ def calculate_alpha_beta_TAS(u, v, w):
         Wiley-lnterscience, pp. 64, 1992.
     """
 
-    TAS = sqrt(u ** 2 + v ** 2 + w ** 2)
-
+    TAS = np.linalg.norm(aero_vel, axis=1)
+    u,v,w = aero_vel.T
     alpha = arctan2(w, u)
     beta = arcsin(v / TAS)
     return alpha, beta, TAS
