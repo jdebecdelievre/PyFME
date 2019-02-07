@@ -1,5 +1,11 @@
 /validation/*
 *.pyc
 */.ipynb_checkpoints/*
-*egg_ingo*
-*/pycache/*
+
+__pycache__
+.cache
+.idea
+build
+
+*.egg-info
+
