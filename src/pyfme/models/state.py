@@ -36,7 +36,7 @@ class State():
                 state_vec = state_vec.T
         else:
             state_vec = np.expand_dims(state_vec, axis=0)
-        self.vec = state_vec
+        self.vec = state_vec*1.
 
         # Load from json if provided
         if from_json != None:
@@ -85,7 +85,7 @@ class StateProperty(object):
         return instance.vec.T[self.slice].T
 
     def __set__(self, instance, value):
-        instance.vec[:, self.slice] = value
+        instance.vec[:, self.slice] = value*1.
 
 class BodyAxisState(State):
     """
