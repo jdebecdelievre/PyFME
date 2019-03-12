@@ -375,7 +375,7 @@ def body2wind(body_coords, alpha, beta):
 
     """
 
-    check_alpha_beta_range(alpha, beta)
+    # check_alpha_beta_range(alpha, beta)
 
     # Transformation matrix from body to wind
     Lwb = np.array([
@@ -438,7 +438,7 @@ def wind2body(wind_coords, alpha, beta):
 
     """
 
-    check_alpha_beta_range(alpha, beta)
+    # check_alpha_beta_range(alpha, beta)
 
     # Transformation matrix from body to wind
     Lbw = np.array([

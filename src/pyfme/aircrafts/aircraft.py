@@ -18,18 +18,24 @@ from pyfme.environment import Conditions
 
 class Aircraft(object):
 
-    def __init__(self):
+    def __init__(self, 
+                mass=0, 
+                inertia=np.zeros((3, 3)),
+                Sw=0,
+                chord=0,
+                span=0,
+                control_limits={}):
         # Mass & Inertia
-        self.mass = 0  # kg
-        self.inertia = np.zeros((3, 3))  # kg·m²
+        self.mass = mass  # kg
+        self.inertia = inertia  # kg·m²
 
         # Geometry
-        self.Sw = 0  # m2
-        self.chord = 0  # m
-        self.span = 0  # m
+        self.Sw = Sw  # m2
+        self.chord = chord  # m
+        self.span = span  # m
 
         # Controls
-        self.control_limits = {}
+        self.control_limits = control_limits
 
     @property
     def Ixx(self):
