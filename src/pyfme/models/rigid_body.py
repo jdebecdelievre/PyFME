@@ -13,19 +13,19 @@ from pyfme.models.dynamic_system import AircraftDynamicSystem
 from numba import jit
 from pyfme.models.state import BodyAxisState, BodyAxisStateQuaternion
 import quaternion as npquat
-from pyfme.utils.change_euler_quaternion import rotate_vector
+from pyfme.utils.change_euler_quaternion import change_basis
 _FLOAT_EPS_4 = np.finfo(float).eps * 4.0
 import pdb
 
 class RigidBodySystem(AircraftDynamicSystem):
-    @jit
+    # @jit
     def _substract_gravity(self, forces, state, mass=None):
         mass = self.aircraft.mass if mass is None else mass
         conditions = self.environment.calculate_aero_conditions(state)
         forces -= conditions.gravity_vector*mass
         return forces
 
-    @jit
+    # @jit
     def inverse_momentum_equations(self, state, state_dot,
                                    mass=None,inertia_matrix=None):
         """flat earth equations: linear momentum equations, angular momentum
@@ -44,7 +44,7 @@ class RigidBodySystem(AircraftDynamicSystem):
         moments = (I@ state_dot.omega.T).T + np.cross(state.omega, (I@state.omega.T).T)
         return forces, moments
 
-    @jit
+    # @jit
     def inverse_dynamics(self, time_step, 
                         position, attitude,
                         earth_velocity=None, attitude_dot=None):
@@ -292,7 +292,7 @@ class RigidBodyQuat(RigidBodySystem):
     def make_state_obj(self, state_vec=None, **options):
         return RigidBodyQuatState(state_vec, **options)
 
-    @jit
+    # @jit
     def _system_equations(self, state, forces, moments):
         """Euler flat earth equations: linear momentum equations, angular momentum
         equations, angular kinematic equations, linear kinematic
@@ -345,7 +345,7 @@ class RigidBodyQuat(RigidBodySystem):
         state_dot.quaternion = 1/2 * state.quaternion * Qomega + 1/2*(1-np.norm(state.quaternion))*state.quaternion/.1
 
         # Linear kinematic equations : rotate body velocity back to earth frame
-        state_dot.position = rotate_vector(state.velocity, state.quaternion.conjugate())
+        state_dot.position = change_basis(state.velocity, state.quaternion.conjugate())
         return state_dot.vec
 
 
@@ -359,7 +359,7 @@ class RigidBodyQuat(RigidBodySystem):
         state.omega = npquat.as_float_array(2 * state.quaternion.conjugate() * state_dot.quaternion)[:,1:]
 
         # Linear kinematic equations
-        state.velocity = rotate_vector(state_dot.position, state.quaternion)
+        state.velocity = change_basis(state_dot.position, state.quaternion)
 
         return state
 

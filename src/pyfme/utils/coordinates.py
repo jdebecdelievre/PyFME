@@ -91,7 +91,7 @@ def body2hor(body_coords, theta, phi, psi):
                      cos(phi) * cos(theta)]
                     ])
 
-    hor_coords = Lhb.dot(body_coords)
+    hor_coords = np.squeeze(Lhb).dot(body_coords)
 
     return hor_coords
 
@@ -156,8 +156,7 @@ def hor2body(hor_coords, theta, phi, psi):
                      cos(phi) * sin(theta) * sin(psi) - sin(phi) * cos(psi),
                      cos(phi) * cos(theta)]
                     ])
-
-    body_coords = Lbh.dot(hor_coords)
+    body_coords = np.squeeze(Lbh).dot(hor_coords)
 
     return body_coords
 
@@ -378,19 +377,18 @@ def body2wind(body_coords, alpha, beta):
     # check_alpha_beta_range(alpha, beta)
 
     # Transformation matrix from body to wind
-    Lwb = np.array([
-                    [cos(alpha) * cos(beta),
-                     sin(beta),
-                     sin(alpha) * cos(beta)],
-                    [- cos(alpha) * sin(beta),
-                     cos(beta),
-                     -sin(alpha) * sin(beta)],
-                    [-sin(alpha),
-                     0,
-                     cos(alpha)]
-                    ])
+    wind_coords = np.zeros_like(body_coords)
+    wind_coords[0] = cos(alpha) * cos(beta) * body_coords[0] + \
+                     sin(beta) * body_coords[1] + \
+                     sin(alpha) * cos(beta) * body_coords[2]
 
-    wind_coords = Lwb.dot(body_coords)
+    wind_coords[1] =  - cos(alpha) * sin(beta) * body_coords[0] + \
+                     cos(beta) * body_coords[1] - \
+                     sin(alpha) * sin(beta) * body_coords[2]
+
+    wind_coords[2] = -sin(alpha) * body_coords[0] + \
+                     cos(alpha) * body_coords[2]
+
 
     return wind_coords
 
@@ -401,11 +399,11 @@ def wind2body(wind_coords, alpha, beta):
 
     Parameters
     ----------
-    wind_coords : array_like
-        3 dimensional vector with (x,y,z) coordinates in body axes.
-    alpha : float
+    wind_coords : 3 X N arrayarray_like
+        3 x N dimensional vector with (x,y,z) coordinates in body axes.
+    alpha : N dimensional array
         Angle of attack (rad).
-    beta : float
+    beta : N dimensional array
         Sideslip angle (rad).
 
     Returns
@@ -441,18 +439,13 @@ def wind2body(wind_coords, alpha, beta):
     # check_alpha_beta_range(alpha, beta)
 
     # Transformation matrix from body to wind
-    Lbw = np.array([
-                    [cos(alpha) * cos(beta),
-                     - cos(alpha) * sin(beta),
-                     -sin(alpha)],
-                    [sin(beta),
-                     cos(beta),
-                     0],
-                    [sin(alpha) * cos(beta),
-                     -sin(alpha) * sin(beta),
-                     cos(alpha)]
-                    ])
-
-    body_coords = Lbw.dot(wind_coords)
-
+    body_coords = np.zeros_like(wind_coords)
+    body_coords[0] = cos(alpha) * cos(beta) * wind_coords[0] - \
+                     cos(alpha ) * sin(beta) * wind_coords[1] - \
+                     sin(alpha) * wind_coords[2]
+    body_coords[1] = sin(beta) * wind_coords[0] + \
+                     cos(beta) * wind_coords[1]
+    body_coords[2] = sin(alpha) * cos(beta) * wind_coords[0] - \
+                     sin(alpha) * sin(beta) * wind_coords[1] + \
+                     cos(alpha) * wind_coords[2]
     return body_coords

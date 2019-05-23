@@ -11,7 +11,7 @@ import numpy as np
 
 from pyfme.models.constants import GRAVITY, STD_GRAVITATIONAL_PARAMETER
 from pyfme.utils.coordinates import hor2body
-from pyfme.utils.change_euler_quaternion import rotate_vector
+from pyfme.utils.change_euler_quaternion import change_basis
 
 class VerticalConstant(object):
     """Vertical constant gravity model.
@@ -53,7 +53,7 @@ class LatitudeModel(object):
 
 def grav_versor(state):
     if hasattr(state, 'quaternion'):
-        _versor = rotate_vector(np.array([[0,0,1]]*state.N), state.quaternion)
+        _versor = change_basis(np.array([[0,0,1]]*state.N), state.quaternion)
     else:
         _versor = np.array([- np.sin(state.theta),
                             np.sin(state.phi)*np.cos(state.theta),

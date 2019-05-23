@@ -169,12 +169,13 @@ class BasisLinear(Aircraft):
         p, q, r = state.omega.T  # rad/s
         CL = (
             self.CL_0 +
-            self.CL_alpha*alpha_RAD +
+            self.CL_alpha * alpha_RAD +
+            # self.CL_alpha*np.sin(2*np.pi*alpha_RAD)/2/np.pi +
             self.CL_delta_elev*delta_elev +
             self.CL_q * q * c/(2*V)
         )
         # STALL
-        CL = CL * (abs(CL) < self.CL_MAX) + np.sign(CL)*self.CL_MAX*(1-(abs(CL) < self.CL_MAX))
+        # CL = CL * (abs(CL) < self.CL_MAX) + np.sign(CL)*self.CL_MAX*(1-(abs(CL) < self.CL_MAX))
 
         CD = self.CD_0 + CL**2/(self.AR*self.e*np.pi)
 
@@ -184,6 +185,7 @@ class BasisLinear(Aircraft):
             self.CM_delta_elev * delta_elev +
             self.CM_q * q * c/(2*V)
         )
+        # pdb.set_trace()
         return CL, CD, CM
 
     def _calculate_aero_lat_forces_moments_coeffs(self, alpha, beta, V, state, controls):

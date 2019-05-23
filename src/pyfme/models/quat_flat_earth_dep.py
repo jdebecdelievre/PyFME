@@ -19,7 +19,7 @@ from numba import jit
 from pyfme.models.state import BodyAxisStateQuaternion
 import quaternion as npquat
 import pdb
-from pyfme.utils.change_euler_quaternion import rotate_vector
+from pyfme.utils.change_euler_quaternion import change_basis
 
 QuatFlatEarthState = BodyAxisStateQuaternion
 
@@ -89,7 +89,7 @@ class QuatFlatEarth(AircraftDynamicSystem):
         state_dot.quaternion = 1/2 * state.quaternion * Qomega
 
         # Linear kinematic equations : rotate body velocity back to earth frame
-        state_dot.position = rotate_vector(state.velocity, state.quaternion.conjugate())
+        state_dot.position = change_basis(state.velocity, state.quaternion.conjugate())
         return state_dot.vec
 
     @jit
@@ -144,7 +144,7 @@ class QuatFlatEarth(AircraftDynamicSystem):
         state.omega = 2 * state_dot.quaternion * np.invert(state.quaternion)
 
         # Linear kinematic equations
-        state.velocity = rotate_vector(state_dot.position, state.quaternion)
+        state.velocity = change_basis(state_dot.position, state.quaternion)
 
         return state
 

@@ -4,8 +4,9 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from json import dump, load
 import pandas as pd
-from pyfme.utils.change_euler_quaternion import quatern2euler, euler2quatern
+from pyfme.utils.change_euler_quaternion import quatern2euler, euler2quatern, change_basis
 import quaternion as npquat
+from pyfme.utils.coordinates import hor2body, body2hor
 
 class State():
     def __init__(self, dimension, info, state_vec, time, from_json, N):
@@ -87,6 +88,7 @@ class StateProperty(object):
     def __set__(self, instance, value):
         instance.vec[:, self.slice] = value*1.
 
+
 class BodyAxisState(State):
     """
     This class only contains an attribute vec that contains a state=np.array(12).
@@ -156,12 +158,12 @@ class BodyAxisStateQuaternion(State):
     r = StateProperty(12)
     omega = StateProperty([10,11,12])
 
-    def __init__(self, state_vec=None, time=None, from_json=None, N=None):
-        
+    def __init__(self, state_vec=None, time=None, from_json=None, N=None, aircraft):
         # Define infos and dimensions
         info = ["x_e","y_e","z_e", "q0","qx", "qy", "qz", "u", "v", "w", "p", "q", "r"]
         dimension = 13
         super().__init__(dimension, info, state_vec, time, from_json, N)
+        self.aircraft = None
 
     @property
     def quaternion(self):
@@ -195,6 +197,37 @@ class BodyAxisStateQuaternion(State):
             value = np.expand_dims(value, axis=0)
         self.quaternion = euler2quatern(value)
 
+    @property
+    def alpha(self):
+        return np.arctan2(self.w, self.u)
+    @property
+    def beta(self):
+        return np.arcsin(self.v, self.V)
+    @property
+    def qhat(self, chord=None):
+        assert self.aircraft is not None or chord is not None, "The state object must have an argument named aircraft if a chord is not specified as input."
+        return self.q * self.aircraft.chord / 2 / self.V
+    @property
+    def phat(self, span=None):
+        assert self.aircraft is not None or chord is not None, "The state object must have an argument named aircraft if a is not specified span as input."
+        return self.q * self.aircraft.span / 2 / self.V
+    @property
+    def rhat(self, span=None):
+        assert self.aircraft is not None or chord is not None, "The state object must have an argument named aircraft if a span is not specified as input."
+        return self.q * self.aircraft.span / 2 / self.V
+
+    @property
+    def earth_velocity(self):
+        return change_basis(self.velocity, self.quaternion.conjugate())
+    @earth_velocity.setter
+    def earth_velocity(self, value):
+        # set the quaternion vector
+        if type(value) == list:
+            value = np.array(value)
+        if value.ndim == 1:
+            value = np.expand_dims(value, axis=0)
+        self.velocity = change_basis(value, self.quaternion)
+
     def __repr__(self):
         rv = (
             "Aircraft State with quaternions.\n"
@@ -206,7 +239,8 @@ class BodyAxisStateQuaternion(State):
         )
         return rv
 
+
 def copyStateValues(state1, state2):
-    for attr in ['position', 'velocity', 'attitude', 'omega']:
+    for attr in state1.info:
         setattr(state2, attr, getattr(state1, attr))
     return state2

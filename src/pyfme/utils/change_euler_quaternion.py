@@ -96,7 +96,7 @@ def rotate_vector(vector, quat_array):
     ----------
     vector : array_like
         Nx3 array 
-    quat_array : aray of quaternions as defined by np.quaternion 
+    quat_array : array of quaternions as defined by np.quaternion 
 
     Returns
     -------
@@ -109,10 +109,30 @@ def rotate_vector(vector, quat_array):
     vector parts of the quaternion, respectively, and m is the sum of
     the squares of the components of the quaternion. Implemented with numba.
    '''
-    N,_  = vector.shape
+    N  = vector.shape[0]
     V = quaternion.from_float_array(np.hstack((np.zeros((N,1)), vector)))
     return quaternion.as_float_array(
-        np.invert(quat_array) * V * quat_array)[:,1:] # norm is the square of the II-norm in np.quaternion
+        quat_array * V * np.invert(quat_array))[:,1:] # norm is the square of the II-norm in np.quaternion
+
+
+def change_basis(vector, quat_array):
+    '''Apply the rotation described in quat_array to the basis in which vectors in vector are described.
+    A change of basis is about finding the components of the old basis vectors in the new basis, which means applying 
+    the inverse rotation.
+
+    Parameters
+    ----------
+    vector : array_like, coordinates in basis1
+        Nx3 array 
+    quat_array : array of quaternions as defined by np.quaternion. They describe the rotation from basis1 
+    to basis2, i.e. for any corresponding basis vectors from basis1 and basis2, say e1 and e2, we have: e2 = rotate_vector(e1, quat)
+    Returns
+    -------
+    vector : array_like
+    '''
+
+    return rotate_vector(vector, np.invert(quat_array))
+
 
 
 def check_unitnorm(quaternion):
