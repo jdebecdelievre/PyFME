@@ -158,7 +158,7 @@ class BodyAxisStateQuaternion(State):
     r = StateProperty(12)
     omega = StateProperty([10,11,12])
 
-    def __init__(self, state_vec=None, time=None, from_json=None, N=None, aircraft):
+    def __init__(self, state_vec=None, time=None, from_json=None, N=None, aircraft=None):
         # Define infos and dimensions
         info = ["x_e","y_e","z_e", "q0","qx", "qy", "qz", "u", "v", "w", "p", "q", "r"]
         dimension = 13
