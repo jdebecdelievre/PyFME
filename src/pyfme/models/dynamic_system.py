@@ -44,7 +44,7 @@ class AircraftDynamicSystem:
     def make_state_obj(self, state_vec=None, **options):
         raise NotImplementedError
 
-    @jit
+    # @jit
     def _fun(self, t, state_vec, controls_sequence):
         
         state = self.make_state_obj(state_vec)
@@ -138,13 +138,13 @@ class AircraftDynamicSystem:
 
         # solve
         sol = solve_ivp(fun, t_span, x0, method=method, t_eval=t_eval,
-                        dense_output=dense_output, vectorized=True,
+                        dense_output=dense_output, vectorized=False,
                         **options)
         if sol.status != 0:
             print(sol.message)
         
         if return_state:
-            state = self.make_state_obj(state_vec=sol.y, time=sol.t)
+            state = self.make_state_obj(state_vec=sol.y, time=sol.t, aircraft=self.aircraft)
         else:
             state = pd.DataFrame(sol.y.T, columns=self.info)
             state['time'] = sol.t

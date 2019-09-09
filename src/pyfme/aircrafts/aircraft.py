@@ -14,7 +14,7 @@ import pdb
 from pyfme.utils.coordinates import body2wind, wind2body
 from copy import deepcopy as cp
 from pyfme.environment import Conditions
-
+from json import load
 
 class Aircraft(object):
 
@@ -24,7 +24,8 @@ class Aircraft(object):
                 Sw=0,
                 chord=0,
                 span=0,
-                control_limits={}):
+                control_limits={}, file=None):
+
         # Mass & Inertia
         self.mass = mass  # kg
         self.inertia = inertia  # kg·m²
@@ -36,6 +37,19 @@ class Aircraft(object):
 
         # Controls
         self.control_limits = control_limits
+
+        # File information
+        if file:
+            self.read_file(file)
+    
+    def read_file(self,file):
+        with open(file, 'r') as f:
+            caract = load(f)
+        self.mass = caract['inertia']['mass']
+        self.inertia = caract['inertia']['inertia']
+        self.Sw = caract['geometry']['Sw']
+        self.chord = caract['geometry']['chord']
+        self.span = caract['geometry']['span']
 
     @property
     def Ixx(self):
@@ -70,7 +84,6 @@ class Aircraft(object):
         TAS = conditions.TAS
         alpha = conditions.alpha
         beta = conditions.beta
-
         Ft = self._calculate_thrust_forces_moments(TAS, conditions, controls)
         L, D, Y, l, m, n = self._calculate_aero_forces_moments(conditions, state, controls)
         Fa_wind = np.array([-D, Y, -L])
@@ -135,23 +148,25 @@ class Aircraft(object):
 
 
 class ConventionalControls:
-    def __init__(self, controls_vec=-np.ones(4)):
-        self.info = 'controls.vec=[delta_elevator, delta_aileron,delta_rudder,delta_throttle]'
-        if controls_vec.size == 0:
-            raise IOError(self.info)
-        # transpose if the controls are [n,m], we want it [m,n] so that controls.vec[1] is one contr example
-        if controls_vec.ndim > 1:
-            if controls_vec.shape[1] != 4:
-                controls_vec = controls_vec.T
+    def __init__(self, controls_vec=None, N=None):
+        self.info = 'controls.vec=[delta_aileron, delta_elevator,delta_rudder,delta_throttle]'
+        if controls_vec is None:
+            if N is None:
+                self.vec = np.ones((1, 4))
+            else:
+                self.vec = np.ones((1, 4))
         else:
-            controls_vec = np.expand_dims(controls_vec, axis=0)
-        self.vec = controls_vec
+            # transpose if the controls are [n,m], we want it [m,n] so that controls.vec[1] is one contr example
+            if controls_vec.ndim ==1:
+                controls_vec = np.expand_dims(controls_vec, axis=0)
+            self.vec = controls_vec
+            self.N = self.vec.shape[0]
 
     def __repr__(self):
         rv = (
             "Conventional Controls \n"
-            f"delta_elevator: {self.delta_elevator} \n"
             f"delta_aileron: {self.delta_aileron} \n"
+            f"delta_elevator: {self.delta_elevator} \n"
             f"delta_rudder: {self.delta_rudder} \n"
             f"delta_throttle: {self.delta_throttle} \n"
         )
@@ -169,25 +184,17 @@ class ConventionalControls:
         return self
 
     @property
-    def N(self):
-        # number of time steps are stored in this state object (for vectorization)
-        if self.vec.ndim >1:
-            return self.vec.shape[1]
-        else:
-            return 1
-
-    @property
-    def delta_elevator(self):
+    def delta_aileron(self):
         return self.vec.T[0]
-    @delta_elevator.setter
-    def delta_elevator(self, value):
+    @delta_aileron.setter
+    def delta_aileron(self, value):
         self.vec.T[0] = value
 
     @property
-    def delta_aileron(self):
+    def delta_elevator(self):
         return self.vec.T[1]
-    @delta_aileron.setter
-    def delta_aileron(self, value):
+    @delta_elevator.setter
+    def delta_elevator(self, value):
         self.vec.T[1] = value
 
     @property

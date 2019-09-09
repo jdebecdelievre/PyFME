@@ -1,0 +1,9 @@
+Lunit = 1.0 m
+Munit = 1.0 kg
+Tunit = 1.0 s
+
+g   = 9.81
+rho = 1.225
+
+#  mass    x     y     z      Ixx    Iyy   Izz   [ Ixy  Ixz  Iyz ]
+  0.050  0.325   0.0   0.0    0.0005 0.025 0.03    ! total weight

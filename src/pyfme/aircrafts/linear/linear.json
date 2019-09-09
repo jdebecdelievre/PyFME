@@ -1,0 +1,48 @@
+{
+"alpha_0":0.05,
+"CL_0":0.60,
+"CM_0":0.0,
+"CD_0":0.060,
+"e":0.85,
+
+"CL_alpha": 5.6,
+"CM_alpha":-0.86,
+
+"CY_beta":-0.96,
+"Cl_beta":-0.221,
+"CN_beta": 0.150,
+
+"CY_p": 0.094,
+"Cl_p":-0.45,
+"CN_p":-0.121,
+
+"CL_q": 11.0,
+"CM_q":-49.0,
+
+"CY_r" :0.24,
+"Cl_r" :0.101,
+"CN_r" :-0.30,
+
+"CY_delta_aile":-0.0015,
+"Cl_delta_aile": 0.0083,
+"CN_delta_aile": 0.0005,
+
+"CL_delta_elev": 0.0148,
+"CM_delta_elev":-0.0651,
+
+"CY_delta_rud":-0.0040,
+"Cl_delta_rud":-0.0002,
+"CN_delta_rud": 0.0016,
+
+"Sw":0.042,
+"chord":0.068,
+"span":0.61,
+"mass":0.05,
+"inertia":
+    [[0.0005,0,0],
+    [0, 0.0025,0],
+    [0,0,0.003]],
+
+"CL_alpha_dot":0.00,
+"CM_alpha_dot":-2.84
+}

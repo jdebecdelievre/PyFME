@@ -109,6 +109,8 @@ def rotate_vector(vector, quat_array):
     vector parts of the quaternion, respectively, and m is the sum of
     the squares of the components of the quaternion. Implemented with numba.
    '''
+    if type(quat_array[0]) != quaternion.quaternion:
+        quat_array = quaternion.from_float_array(quat_array)
     N  = vector.shape[0]
     V = quaternion.from_float_array(np.hstack((np.zeros((N,1)), vector)))
     return quaternion.as_float_array(
@@ -130,7 +132,8 @@ def change_basis(vector, quat_array):
     -------
     vector : array_like
     '''
-
+    if type(quat_array[0]) != quaternion.quaternion:
+        quat_array = quaternion.from_float_array(quat_array)
     return rotate_vector(vector, np.invert(quat_array))
 
 

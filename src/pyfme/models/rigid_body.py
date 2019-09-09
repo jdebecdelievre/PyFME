@@ -346,6 +346,8 @@ class RigidBodyQuat(RigidBodySystem):
 
         # Linear kinematic equations : rotate body velocity back to earth frame
         state_dot.position = change_basis(state.velocity, state.quaternion.conjugate())
+
+        self.aircraft.state_dot = state_dot
         return state_dot.vec
 
 
@@ -367,4 +369,3 @@ class RigidBodyQuat(RigidBodySystem):
 def nonINFchecked(array, M=1e5):
     b = np.abs(array) < M
     return array*b + M*(1-b)
-

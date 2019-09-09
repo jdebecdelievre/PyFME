@@ -13,6 +13,8 @@ from abc import abstractmethod
 from numpy import vectorize, float64
 from numpy import sin, pi
 import numpy as np
+from scipy.signal import chirp
+from scipy.interpolate import UnivariateSpline as uspline
 
 
 def vectorize_float(method):
@@ -61,6 +63,16 @@ class Constant(Control):
 
     def _fun(self, t):
         return np.ones_like(t)*self.offset
+
+
+class Chirp(Control):
+
+    def __init__(self, amplitude, length, initial_freq, final_freq):
+        n_points = length/final_freq * 100 # 100 points per period
+        self.C = lambda t: amplitude * chirp(t, initial_freq, length, final_freq)
+
+    def _fun(self, t):
+        return self.C(t)
 
 
 class Step(Control):

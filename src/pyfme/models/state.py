@@ -7,6 +7,48 @@ import pandas as pd
 from pyfme.utils.change_euler_quaternion import quatern2euler, euler2quatern, change_basis
 import quaternion as npquat
 from pyfme.utils.coordinates import hor2body, body2hor
+import matplotlib.pyplot as plt
+from matplotlib import rc as rcparams
+from copy import deepcopy
+
+DEFAULT_TITLE = {
+    'alpha': 'Angle of attack (deg)',
+    'beta': 'Angle of sideslip (deg)',
+    'phi': 'Roll angle (deg)',
+    'theta': 'Pitch angle (deg)',
+    'psi': 'Yaw angle (deg)',
+    'attitude': 'Euler angle (deg)',
+    'time': 'Time (s)',
+    'p': 'p (rad/s)',
+    'q': 'q (rad/s)',
+    'r': 'r (rad/s)',
+    'phat': '$\\hat{p}$',
+    'qhat': '$\\hat{q}$',
+    'rhat': '$\\hat{r}$',
+    'omega': 'rotation rates (rad/s)',
+    'quat': 'quaternion',
+    'q0': 'q0',
+    'qx': 'qx',
+    'qy': 'qy',
+    'qz': 'qz',
+    'velocity': 'velocity (m/s)',
+    'u': 'u (m/s)',
+    'v': 'v (m/s)',
+    'w': 'w (m/s)',
+    'x_e': 'x (m)',
+    'y_e': 'y (m)',
+    'z_e': 'z (m)',
+    'position': 'position (m)',
+    'earth_velocity' : 'velocity (m/s)',
+    'V':'Airspeed (m/s)'
+}
+DEGVARS = ['alpha', 'beta', 'phi', 'theta', 'psi', 'attitude']
+
+DEFAULT_RC = dict(
+    legend = dict(fontsize=15),
+    axes= dict(labelsize=20, titlesize=20),
+    figure = dict(figsize=(16,8))
+)
 
 class State():
     def __init__(self, dimension, info, state_vec, time, from_json, N):
@@ -24,9 +66,9 @@ class State():
         self.dimension = dimension
 
         # Make room for N states if N is specified
-        assert state_vec is None or N is None
         if state_vec is None:
-            state_vec = (np.ones(dimension) if N is None else np.ones((N,dimension))) * float('nan')
+            N = 1 if N is None else N
+            state_vec =  np.ones((N,dimension)) * float('nan')
         if time is None:
             self.time = (np.ones(1) if N is None else np.ones((N,1))) * float('nan')
         else:
@@ -158,12 +200,22 @@ class BodyAxisStateQuaternion(State):
     r = StateProperty(12)
     omega = StateProperty([10,11,12])
 
-    def __init__(self, state_vec=None, time=None, from_json=None, N=None, aircraft=None):
+    def __init__(self, state_vec=None, time=None, from_json=None, N=None, aircraft=None, 
+                default_titles=DEFAULT_TITLE, deg_vars=DEGVARS, rcParams=DEFAULT_RC):
         # Define infos and dimensions
         info = ["x_e","y_e","z_e", "q0","qx", "qy", "qz", "u", "v", "w", "p", "q", "r"]
         dimension = 13
+        if N is None:
+            if state_vec is None:
+                N = 1
+            else:
+                N = state_vec.shape[0]
         super().__init__(dimension, info, state_vec, time, from_json, N)
-        self.aircraft = None
+        self.aircraft = aircraft
+        self.default_titles = default_titles
+        self.deg_vars = deg_vars
+        self.rcParams = rcParams
+
 
     @property
     def quaternion(self):
@@ -202,19 +254,19 @@ class BodyAxisStateQuaternion(State):
         return np.arctan2(self.w, self.u)
     @property
     def beta(self):
-        return np.arcsin(self.v, self.V)
+        return np.arcsin(self.v / self.V)
     @property
-    def qhat(self, chord=None):
-        assert self.aircraft is not None or chord is not None, "The state object must have an argument named aircraft if a chord is not specified as input."
+    def qhat(self):
+        assert self.aircraft is not None, "The state object must have an argument named aircraft."
         return self.q * self.aircraft.chord / 2 / self.V
     @property
-    def phat(self, span=None):
-        assert self.aircraft is not None or chord is not None, "The state object must have an argument named aircraft if a is not specified span as input."
-        return self.q * self.aircraft.span / 2 / self.V
+    def phat(self):
+        assert self.aircraft is not None, "The state object must have an argument named aircraft."
+        return self.p * self.aircraft.span / 2 / self.V
     @property
-    def rhat(self, span=None):
-        assert self.aircraft is not None or chord is not None, "The state object must have an argument named aircraft if a span is not specified as input."
-        return self.q * self.aircraft.span / 2 / self.V
+    def rhat(self):
+        assert self.aircraft is not None, "The state object must have an argument named aircraft."
+        return self.r * self.aircraft.span / 2 / self.V
 
     @property
     def earth_velocity(self):
@@ -227,6 +279,60 @@ class BodyAxisStateQuaternion(State):
         if value.ndim == 1:
             value = np.expand_dims(value, axis=0)
         self.velocity = change_basis(value, self.quaternion)
+
+    def plot(self, xname=None, yname=None, 
+            xdata=None, ydata=None,
+            xlabel=None, ylabel=None, 
+            title=None, point='+',
+            xdeg=None, ydeg=None,
+            plotParams=None, hist=False, nbins=100, fig=None):
+        
+        # initialize fig
+        plotParams = self.rcParams if plotParams is None else plotParams
+        for k in plotParams:
+            rcparams(k, **plotParams[k])
+        if fig is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+        else:
+            ax = fig.axes[0]
+
+        # get data
+        if xdata is None:
+            xdata = getattr(self, xname)
+        if ydata is None and not hist:
+            ydata = getattr(self, yname)
+        
+        # convert radians to degrees if necessary
+        if xdeg is None:
+            xdeg = True if xname in self.deg_vars else False
+        if ydeg is None:
+            ydeg = True if yname in self.deg_vars else False
+        xdata = xdata*180/np.pi if xdeg else xdata
+        ydata = ydata*180/np.pi if ydeg else ydata
+
+        # set up default labels titles
+        if xlabel is None:
+            xlabel = '' if xname is None else self.default_titles[xname]
+        if ylabel is None and not hist:
+            ylabel = '' if yname is None else self.default_titles[yname]
+        
+        # plot
+        if not hist:
+            ax.plot(xdata, ydata, point)
+            ax.set_ylabel(ylabel)
+        else:
+            ax.hist(xdata, nbins)
+        ax.grid(True)
+        ax.set_xlabel(xlabel)
+        ax.set_title(title)
+        return fig, ax
+    
+    def __getitem__(self, idx):
+        S = deepcopy(self)
+        S.time = self.time[idx]
+        S.vec = self.vec[idx]
+        return S
 
     def __repr__(self):
         rv = (

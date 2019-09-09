@@ -1,0 +1,8 @@
+/Users/jeandebecdelievre/Box\ Sync/recherche/soft/avl/avl3.35
+LOAD linear
+MASS linear.mass
+CASE linear.run
+MSET > 0
+OPER
+X
+ST > stab.dat
